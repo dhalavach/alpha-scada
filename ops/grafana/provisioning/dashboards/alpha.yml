@@ -1,0 +1,9 @@
+apiVersion: 1
+
+providers:
+  - name: Alpha SCADA
+    orgId: 1
+    folder: Alpha
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards

@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alpha-scada-config
+  namespace: alpha-scada
+data:
+  ASPNETCORE_URLS: http://+:8080
+  Simulator__Enabled: "false"
+  Mqtt__Enabled: "true"
+  Mqtt__Host: mosquitto
+  Mqtt__Port: "1883"
+  Region: EU
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: alpha-scada-secrets
+  namespace: alpha-scada
+type: Opaque
+stringData:
+  ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=alpha_scada;Username=alpha;Password=alpha

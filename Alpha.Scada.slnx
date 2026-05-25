@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Alpha.Scada.Api/Alpha.Scada.Api.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Alpha.Scada.Tests/Alpha.Scada.Tests.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,22 @@
+{
+  "title": "Alpha SCADA Overview",
+  "schemaVersion": 39,
+  "version": 1,
+  "panels": [
+    {
+      "title": "API Up",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "alpha_scada_up"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 0
+      }
+    }
+  ]
+}

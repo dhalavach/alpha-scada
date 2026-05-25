@@ -2,28 +2,39 @@ services:
   api:
     build:
       context: .
-      dockerfile: src/Floyd.Scada.Api/Dockerfile
+      dockerfile: src/Alpha.Scada.Api/Dockerfile
     environment:
       ASPNETCORE_URLS: http://+:8080
-      ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=floyd_scada;Username=floyd;Password=floyd
+      ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=alpha_scada;Username=alpha;Password=alpha
+      Simulator__Enabled: "true"
+      Mqtt__Enabled: "true"
       Mqtt__Host: mosquitto
       Mqtt__Port: "1883"
     ports:
-      - "8080:8080"
+      - "5202:8080"
     depends_on:
       - postgres
       - mosquitto
 
+  frontend:
+    build:
+      context: .
+      dockerfile: src/Alpha.Scada.Web/Dockerfile
+    ports:
+      - "8080:80"
+    depends_on:
+      - api
+
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: floyd_scada
-      POSTGRES_USER: floyd
-      POSTGRES_PASSWORD: floyd
+      POSTGRES_DB: alpha_scada
+      POSTGRES_USER: alpha
+      POSTGRES_PASSWORD: alpha
     ports:
       - "5432:5432"
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - alpha-postgres-data:/var/lib/postgresql/data
       - ./ops/postgres/init.sql:/docker-entrypoint-initdb.d/001-init.sql:ro
 
   mosquitto:
@@ -33,5 +44,24 @@ services:
     volumes:
       - ./ops/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
 
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    profiles: ["ops"]
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./ops/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    profiles: ["ops"]
+    ports:
+      - "3000:3000"
+    volumes:
+      - alpha-grafana-data:/var/lib/grafana
+      - ./ops/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./ops/grafana/dashboards:/var/lib/grafana/dashboards:ro
+
 volumes:
-  postgres-data:
+  alpha-postgres-data:
+  alpha-grafana-data:
