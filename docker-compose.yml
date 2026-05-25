@@ -1,0 +1,37 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: src/Floyd.Scada.Api/Dockerfile
+    environment:
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=floyd_scada;Username=floyd;Password=floyd
+      Mqtt__Host: mosquitto
+      Mqtt__Port: "1883"
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+      - mosquitto
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: floyd_scada
+      POSTGRES_USER: floyd
+      POSTGRES_PASSWORD: floyd
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./ops/postgres/init.sql:/docker-entrypoint-initdb.d/001-init.sql:ro
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./ops/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+
+volumes:
+  postgres-data:

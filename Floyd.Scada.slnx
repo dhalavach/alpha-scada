@@ -1,0 +1,5 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Floyd.Scada.Api/Floyd.Scada.Api.csproj" />
+  </Folder>
+</Solution>

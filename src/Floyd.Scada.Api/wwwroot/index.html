@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Floyd F60 SCADA MVP</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Floyd BioEnergy</p>
+        <h1>F60 Demo Unit</h1>
+      </div>
+      <div class="status" id="connectionStatus">Connecting</div>
+    </header>
+
+    <section class="kpis" aria-label="F60 overview">
+      <article>
+        <span>Electrical</span>
+        <strong id="electrical">--</strong>
+      </article>
+      <article>
+        <span>Thermal</span>
+        <strong id="thermal">--</strong>
+      </article>
+      <article>
+        <span>Wood chips</span>
+        <strong id="fuel">--</strong>
+      </article>
+      <article>
+        <span>Safety</span>
+        <strong id="safety">--</strong>
+      </article>
+    </section>
+
+    <section class="grid">
+      <article class="panel">
+        <div class="panel-header">
+          <h2>Live Tags</h2>
+          <button id="refreshButton" type="button">Refresh</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Subsystem</th>
+                <th>Tag</th>
+                <th>Value</th>
+                <th>Quality</th>
+              </tr>
+            </thead>
+            <tbody id="tagRows"></tbody>
+          </table>
+        </div>
+      </article>
+
+      <aside class="panel">
+        <h2>Active Alarms</h2>
+        <div id="alarmList" class="alarms"></div>
+      </aside>
+    </section>
+
+    <section class="panel">
+      <h2>Monthly Report Snapshot</h2>
+      <dl class="report" id="report"></dl>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+bin/
+obj/
+.vs/
+.vscode/
+node_modules/
+dist/
+.DS_Store
+*.user
+*.suo
+*.swp
+*.log
+.env
