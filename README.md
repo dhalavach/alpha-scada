@@ -51,15 +51,6 @@ ops/                             Compose support, k3s, PostgreSQL, Mosquitto, ob
 tests/                           xUnit contract and rule tests
 ```
 
-## Demo Credentials
-
-```text
-admin@alpha.local / ChangeMe!123
-operator@alpha.local / ChangeMe!123
-viewer@alpha.local / ChangeMe!123
-support@alpha.local / ChangeMe!123
-```
-
 ## Run With Compose
 
 Create local development secrets first. The generated `.env` file is gitignored and provides `JWT_SECRET` for signed user tokens plus `SERVICE_AUTH_TOKEN` for Edge-to-Gateway realtime callbacks.
@@ -77,6 +68,8 @@ Open:
 ```text
 http://localhost:8080
 ```
+
+Local demo credentials are documented in [docs/dev-setup.md](docs/dev-setup.md); production-mode startup does not seed those accounts.
 
 Only the frontend and Gateway are published to the host in the default Compose stack. Internal services, PostgreSQL, Mosquitto, Prometheus, and Grafana stay on the `alpha-internal` Docker network. For backend debugging, run commands inside the network, for example:
 

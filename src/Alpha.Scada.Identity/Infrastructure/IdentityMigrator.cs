@@ -1,15 +1,28 @@
 using Alpha.Scada.Contracts;
 using Npgsql;
+using System.Security.Cryptography;
 
 namespace Alpha.Scada.Identity.Infrastructure;
 
-public sealed class IdentityMigrator(NpgsqlDataSource dataSource, ILogger<IdentityMigrator> logger)
+public sealed class IdentityMigrator(
+    NpgsqlDataSource dataSource,
+    IConfiguration configuration,
+    IHostEnvironment environment,
+    ILogger<IdentityMigrator> logger)
 {
     public async Task MigrateAsync(CancellationToken cancellationToken)
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var command = new NpgsqlCommand(SchemaSql, connection);
         await command.ExecuteNonQueryAsync(cancellationToken);
+
+        var seedDemoUsers = configuration.GetValue<bool?>("Seed:DemoUsers") ?? environment.IsDevelopment();
+        if (!seedDemoUsers)
+        {
+            await EnsureBootstrapAdminAsync(connection, cancellationToken);
+            logger.LogInformation("Identity database is ready.");
+            return;
+        }
 
         foreach (var user in SeedUsers)
         {
@@ -27,7 +40,41 @@ public sealed class IdentityMigrator(NpgsqlDataSource dataSource, ILogger<Identi
             await seed.ExecuteNonQueryAsync(cancellationToken);
         }
 
-        logger.LogInformation("Identity database is ready.");
+        logger.LogInformation("Identity database is ready with development demo users.");
+    }
+
+    private async Task EnsureBootstrapAdminAsync(NpgsqlConnection connection, CancellationToken cancellationToken)
+    {
+        await using var usersExist = new NpgsqlCommand("select exists (select 1 from users)", connection);
+        if ((bool)(await usersExist.ExecuteScalarAsync(cancellationToken) ?? false))
+        {
+            return;
+        }
+
+        var email = configuration["Seed:BootstrapAdminEmail"] ?? "bootstrap-admin@local";
+        var tenantId = Guid.TryParse(configuration["Seed:BootstrapTenantId"], out var configuredTenantId)
+            ? configuredTenantId
+            : Guid.Parse("10000000-0000-0000-0000-000000000001");
+        var password = GeneratePassword();
+
+        await using var seed = new NpgsqlCommand("""
+            insert into users (id, tenant_id, email, display_name, password_hash, role)
+            values (gen_random_uuid(), @tenant_id, @email, @display_name, @password_hash, @role)
+            on conflict (email) do nothing
+            """, connection);
+        seed.Parameters.AddWithValue("tenant_id", tenantId);
+        seed.Parameters.AddWithValue("email", email);
+        seed.Parameters.AddWithValue("display_name", "Bootstrap Admin");
+        seed.Parameters.AddWithValue("password_hash", PasswordHasher.Hash(password));
+        seed.Parameters.AddWithValue("role", Roles.Admin);
+        await seed.ExecuteNonQueryAsync(cancellationToken);
+
+        logger.LogWarning("Created bootstrap admin user {Email} with temporary password {Password}. Rotate this credential immediately.", email, password);
+    }
+
+    private static string GeneratePassword()
+    {
+        return Convert.ToBase64String(RandomNumberGenerator.GetBytes(24));
     }
 
     private static readonly SeedUser[] SeedUsers =

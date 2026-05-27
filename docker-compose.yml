@@ -41,6 +41,7 @@ services:
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=alpha_identity;Username=alpha;Password=alpha
       Jwt__Secret: ${JWT_SECRET:?JWT_SECRET must be set in .env}
+      Seed__DemoUsers: "true"
     networks:
       - alpha-internal
     depends_on:
