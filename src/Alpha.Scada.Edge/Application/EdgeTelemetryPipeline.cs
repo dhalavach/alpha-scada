@@ -3,7 +3,10 @@ using Alpha.Scada.Contracts;
 
 namespace Alpha.Scada.Edge.Application;
 
-public sealed class EdgeTelemetryPipeline(IHttpClientFactory httpClientFactory, ILogger<EdgeTelemetryPipeline> logger)
+public sealed class EdgeTelemetryPipeline(
+    IConfiguration configuration,
+    IHttpClientFactory httpClientFactory,
+    ILogger<EdgeTelemetryPipeline> logger)
 {
     public async Task IngestAsync(string tenantKey, string siteKey, string unitKey, EdgeTelemetryEnvelope envelope, CancellationToken cancellationToken)
     {
@@ -74,8 +77,10 @@ public sealed class EdgeTelemetryPipeline(IHttpClientFactory httpClientFactory, 
         alarmResponse.EnsureSuccessStatusCode();
 
         var gateway = httpClientFactory.CreateClient("gateway");
-        _ = gateway.PostAsJsonAsync("/internal/v1/realtime/telemetry-updated", new RealtimeNotificationRequest(tenant.Id, resolvedUnit.UnitId), cancellationToken);
-        _ = gateway.PostAsJsonAsync("/internal/v1/realtime/alarms-changed", new RealtimeNotificationRequest(tenant.Id, resolvedUnit.UnitId), cancellationToken);
-        _ = gateway.PostAsJsonAsync("/internal/v1/realtime/unit-status-changed", new RealtimeNotificationRequest(tenant.Id, resolvedUnit.UnitId), cancellationToken);
+        var serviceToken = configuration["ServiceAuth:Token"];
+        var notification = new RealtimeNotificationRequest(tenant.Id, resolvedUnit.UnitId);
+        await gateway.PostRealtimeAsync("/internal/v1/realtime/telemetry-updated", notification, serviceToken, cancellationToken);
+        await gateway.PostRealtimeAsync("/internal/v1/realtime/alarms-changed", notification, serviceToken, cancellationToken);
+        await gateway.PostRealtimeAsync("/internal/v1/realtime/unit-status-changed", notification, serviceToken, cancellationToken);
     }
 }

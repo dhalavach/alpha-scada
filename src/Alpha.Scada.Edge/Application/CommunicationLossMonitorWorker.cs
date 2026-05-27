@@ -35,8 +35,9 @@ public sealed class CommunicationLossMonitorWorker(
 
                     var notification = new RealtimeNotificationRequest(unit.TenantId, unit.Id);
                     var gateway = httpClientFactory.CreateClient("gateway");
-                    _ = gateway.PostAsJsonAsync("/internal/v1/realtime/unit-status-changed", notification, stoppingToken);
-                    _ = gateway.PostAsJsonAsync("/internal/v1/realtime/alarms-changed", notification, stoppingToken);
+                    var serviceToken = configuration["ServiceAuth:Token"];
+                    await gateway.PostRealtimeAsync("/internal/v1/realtime/unit-status-changed", notification, serviceToken, stoppingToken);
+                    await gateway.PostRealtimeAsync("/internal/v1/realtime/alarms-changed", notification, serviceToken, stoppingToken);
                 }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)

@@ -8,9 +8,14 @@ namespace Alpha.Scada.ServiceDefaults;
 
 public sealed class JwtTokenService(IConfiguration configuration)
 {
-    private readonly byte[] _secret = Encoding.UTF8.GetBytes(
-        configuration["Jwt:Secret"]
-        ?? "alpha-scada-local-development-secret-change-me-32");
+    private readonly byte[] _secret = GetSigningSecret(configuration);
+
+    public static byte[] GetSigningSecret(IConfiguration configuration)
+    {
+        return Encoding.UTF8.GetBytes(
+            configuration["Jwt:Secret"]
+            ?? "alpha-scada-local-development-secret-change-me-32");
+    }
 
     public LoginResponse Issue(UserDto user, TimeSpan lifetime)
     {

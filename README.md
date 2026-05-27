@@ -11,6 +11,7 @@ Current capabilities:
 - HTTP-only internal service communication for v1.
 - Versioned Node-RED/MQTT telemetry contract through Mosquitto.
 - Gateway-owned SignalR realtime hub at `/hubs/telemetry`.
+- Gateway realtime callbacks under `/internal/v1/realtime/*` require the shared Edge service token; they are not public browser APIs.
 - Local user login with PBKDF2 password hashing and fixed roles.
 - React/Vite frontend with login, site/unit navigation, Combined Heat and Power Unit overview, alarms, and monthly reports.
 - Optional Edge-hosted Combined Heat and Power Unit simulator for local development.

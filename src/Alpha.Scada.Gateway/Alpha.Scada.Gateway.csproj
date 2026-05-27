@@ -7,6 +7,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Alpha.Scada.Contracts\Alpha.Scada.Contracts.csproj" />
     <ProjectReference Include="..\Alpha.Scada.ServiceDefaults\Alpha.Scada.ServiceDefaults.csproj" />
   </ItemGroup>
