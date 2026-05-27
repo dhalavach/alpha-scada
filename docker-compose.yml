@@ -18,6 +18,8 @@ services:
       Services__Reporting: http://reporting:8080
     ports:
       - "5202:8080"
+    networks:
+      - alpha-internal
     depends_on:
       - identity
       - tenant
@@ -38,8 +40,8 @@ services:
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=alpha_identity;Username=alpha;Password=alpha
       Jwt__Secret: alpha-scada-local-development-secret-change-me-32
-    ports:
-      - "5210:8080"
+    networks:
+      - alpha-internal
     depends_on:
       - postgres
 
@@ -53,8 +55,8 @@ services:
     environment:
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=alpha_tenant;Username=alpha;Password=alpha
-    ports:
-      - "5211:8080"
+    networks:
+      - alpha-internal
     depends_on:
       - postgres
 
@@ -68,8 +70,8 @@ services:
     environment:
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=alpha_asset;Username=alpha;Password=alpha
-    ports:
-      - "5212:8080"
+    networks:
+      - alpha-internal
     depends_on:
       - postgres
 
@@ -83,8 +85,8 @@ services:
     environment:
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=alpha_tag_catalog;Username=alpha;Password=alpha
-    ports:
-      - "5213:8080"
+    networks:
+      - alpha-internal
     depends_on:
       - postgres
 
@@ -98,8 +100,8 @@ services:
     environment:
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=alpha_telemetry;Username=alpha;Password=alpha
-    ports:
-      - "5214:8080"
+    networks:
+      - alpha-internal
     depends_on:
       - postgres
 
@@ -113,8 +115,8 @@ services:
     environment:
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=alpha_alarm;Username=alpha;Password=alpha
-    ports:
-      - "5215:8080"
+    networks:
+      - alpha-internal
     depends_on:
       - postgres
 
@@ -131,8 +133,8 @@ services:
       Services__Asset: http://asset:8080
       Services__Telemetry: http://telemetry:8080
       Services__Alarm: http://alarm:8080
-    ports:
-      - "5216:8080"
+    networks:
+      - alpha-internal
     depends_on:
       - postgres
       - asset
@@ -159,8 +161,8 @@ services:
       Services__Telemetry: http://telemetry:8080
       Services__Alarm: http://alarm:8080
       Services__Gateway: http://gateway:8080
-    ports:
-      - "5217:8080"
+    networks:
+      - alpha-internal
     depends_on:
       - postgres
       - mosquitto
@@ -177,6 +179,8 @@ services:
       dockerfile: src/Alpha.Scada.Web/Dockerfile
     ports:
       - "8080:80"
+    networks:
+      - alpha-internal
     depends_on:
       - gateway
 
@@ -186,32 +190,32 @@ services:
       POSTGRES_DB: alpha_identity
       POSTGRES_USER: alpha
       POSTGRES_PASSWORD: alpha
-    ports:
-      - "5432:5432"
+    networks:
+      - alpha-internal
     volumes:
       - alpha-postgres-data:/var/lib/postgresql/data
       - ./ops/postgres/init.sql:/docker-entrypoint-initdb.d/001-init.sql:ro
 
   mosquitto:
     image: eclipse-mosquitto:2
-    ports:
-      - "1883:1883"
+    networks:
+      - alpha-internal
     volumes:
       - ./ops/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
 
   prometheus:
     image: prom/prometheus:v2.55.1
     profiles: ["ops"]
-    ports:
-      - "9090:9090"
+    networks:
+      - alpha-internal
     volumes:
       - ./ops/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
 
   grafana:
     image: grafana/grafana:11.3.0
     profiles: ["ops"]
-    ports:
-      - "3000:3000"
+    networks:
+      - alpha-internal
     volumes:
       - alpha-grafana-data:/var/lib/grafana
       - ./ops/grafana/provisioning:/etc/grafana/provisioning:ro
@@ -220,3 +224,7 @@ services:
 volumes:
   alpha-postgres-data:
   alpha-grafana-data:
+
+networks:
+  alpha-internal:
+    driver: bridge

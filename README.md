@@ -71,13 +71,26 @@ Open:
 http://localhost:8080
 ```
 
+Only the frontend and Gateway are published to the host in the default Compose stack. Internal services, PostgreSQL, Mosquitto, Prometheus, and Grafana stay on the `alpha-internal` Docker network. For backend debugging, run commands inside the network, for example:
+
+```bash
+docker compose exec gateway curl http://alarm:8080/health
+docker compose exec postgres psql -U alpha -d alpha_identity
+```
+
+If you need direct host ports for a specific backend during local development, add a temporary `docker-compose.override.yml` instead of editing the default stack.
+
 Optional observability services:
 
 ```bash
 docker compose --profile ops up --build
 ```
 
+The observability profile also stays internal by default. Publish Grafana or Prometheus with a local override file when you need to inspect them from the host.
+
 ## Run Backend And Frontend Separately
+
+Because the default Compose stack no longer exposes PostgreSQL or Mosquitto to the host, use a local override that publishes those ports before running backend services directly on your machine.
 
 Start infrastructure:
 
