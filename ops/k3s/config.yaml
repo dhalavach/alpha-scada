@@ -5,11 +5,11 @@ metadata:
   namespace: alpha-scada
 data:
   ASPNETCORE_URLS: http://+:8080
-  Simulator__Enabled: "false"
+  Region: EU
   Mqtt__Enabled: "true"
   Mqtt__Host: mosquitto
   Mqtt__Port: "1883"
-  Region: EU
+  Simulator__Enabled: "false"
 ---
 apiVersion: v1
 kind: Secret
@@ -18,4 +18,4 @@ metadata:
   namespace: alpha-scada
 type: Opaque
 stringData:
-  ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=alpha_scada;Username=alpha;Password=alpha
+  Jwt__Secret: alpha-scada-local-development-secret-change-me-32

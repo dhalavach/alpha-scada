@@ -4,11 +4,11 @@
   "version": 1,
   "panels": [
     {
-      "title": "API Up",
+      "title": "Gateway Up",
       "type": "stat",
       "targets": [
         {
-          "expr": "alpha_scada_up"
+          "expr": "alpha_scada_gateway_up"
         }
       ],
       "gridPos": {

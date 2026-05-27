@@ -1,0 +1,501 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alpha-scada-gateway
+  namespace: alpha-scada
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: alpha-scada-gateway
+  template:
+    metadata:
+      labels:
+        app: alpha-scada-gateway
+    spec:
+      containers:
+        - name: gateway
+          image: alpha-scada-gateway:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: alpha-scada-config
+            - secretRef:
+                name: alpha-scada-secrets
+          env:
+            - name: Services__Identity
+              value: http://identity:8080
+            - name: Services__Tenant
+              value: http://tenant:8080
+            - name: Services__Asset
+              value: http://asset:8080
+            - name: Services__TagCatalog
+              value: http://tag-catalog:8080
+            - name: Services__Telemetry
+              value: http://telemetry:8080
+            - name: Services__Alarm
+              value: http://alarm:8080
+            - name: Services__Reporting
+              value: http://reporting:8080
+          ports:
+            - containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gateway
+  namespace: alpha-scada
+spec:
+  selector:
+    app: alpha-scada-gateway
+  ports:
+    - port: 8080
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alpha-scada-identity
+  namespace: alpha-scada
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: alpha-scada-identity
+  template:
+    metadata:
+      labels:
+        app: alpha-scada-identity
+    spec:
+      containers:
+        - name: identity
+          image: alpha-scada-identity:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: alpha-scada-config
+            - secretRef:
+                name: alpha-scada-secrets
+          env:
+            - name: ConnectionStrings__Postgres
+              value: Host=postgres;Port=5432;Database=alpha_identity;Username=alpha;Password=alpha
+          ports:
+            - containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: identity
+  namespace: alpha-scada
+spec:
+  selector:
+    app: alpha-scada-identity
+  ports:
+    - port: 8080
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alpha-scada-tenant
+  namespace: alpha-scada
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: alpha-scada-tenant
+  template:
+    metadata:
+      labels:
+        app: alpha-scada-tenant
+    spec:
+      containers:
+        - name: tenant
+          image: alpha-scada-tenant:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: alpha-scada-config
+          env:
+            - name: ConnectionStrings__Postgres
+              value: Host=postgres;Port=5432;Database=alpha_tenant;Username=alpha;Password=alpha
+          ports:
+            - containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tenant
+  namespace: alpha-scada
+spec:
+  selector:
+    app: alpha-scada-tenant
+  ports:
+    - port: 8080
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alpha-scada-asset
+  namespace: alpha-scada
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: alpha-scada-asset
+  template:
+    metadata:
+      labels:
+        app: alpha-scada-asset
+    spec:
+      containers:
+        - name: asset
+          image: alpha-scada-asset:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: alpha-scada-config
+          env:
+            - name: ConnectionStrings__Postgres
+              value: Host=postgres;Port=5432;Database=alpha_asset;Username=alpha;Password=alpha
+          ports:
+            - containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: asset
+  namespace: alpha-scada
+spec:
+  selector:
+    app: alpha-scada-asset
+  ports:
+    - port: 8080
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alpha-scada-tag-catalog
+  namespace: alpha-scada
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: alpha-scada-tag-catalog
+  template:
+    metadata:
+      labels:
+        app: alpha-scada-tag-catalog
+    spec:
+      containers:
+        - name: tag-catalog
+          image: alpha-scada-tag-catalog:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: alpha-scada-config
+          env:
+            - name: ConnectionStrings__Postgres
+              value: Host=postgres;Port=5432;Database=alpha_tag_catalog;Username=alpha;Password=alpha
+          ports:
+            - containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tag-catalog
+  namespace: alpha-scada
+spec:
+  selector:
+    app: alpha-scada-tag-catalog
+  ports:
+    - port: 8080
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alpha-scada-telemetry
+  namespace: alpha-scada
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: alpha-scada-telemetry
+  template:
+    metadata:
+      labels:
+        app: alpha-scada-telemetry
+    spec:
+      containers:
+        - name: telemetry
+          image: alpha-scada-telemetry:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: alpha-scada-config
+          env:
+            - name: ConnectionStrings__Postgres
+              value: Host=postgres;Port=5432;Database=alpha_telemetry;Username=alpha;Password=alpha
+          ports:
+            - containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: telemetry
+  namespace: alpha-scada
+spec:
+  selector:
+    app: alpha-scada-telemetry
+  ports:
+    - port: 8080
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alpha-scada-alarm
+  namespace: alpha-scada
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: alpha-scada-alarm
+  template:
+    metadata:
+      labels:
+        app: alpha-scada-alarm
+    spec:
+      containers:
+        - name: alarm
+          image: alpha-scada-alarm:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: alpha-scada-config
+          env:
+            - name: ConnectionStrings__Postgres
+              value: Host=postgres;Port=5432;Database=alpha_alarm;Username=alpha;Password=alpha
+          ports:
+            - containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: alarm
+  namespace: alpha-scada
+spec:
+  selector:
+    app: alpha-scada-alarm
+  ports:
+    - port: 8080
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alpha-scada-reporting
+  namespace: alpha-scada
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: alpha-scada-reporting
+  template:
+    metadata:
+      labels:
+        app: alpha-scada-reporting
+    spec:
+      containers:
+        - name: reporting
+          image: alpha-scada-reporting:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: alpha-scada-config
+          env:
+            - name: ConnectionStrings__Postgres
+              value: Host=postgres;Port=5432;Database=alpha_reporting;Username=alpha;Password=alpha
+            - name: Services__Asset
+              value: http://asset:8080
+            - name: Services__Telemetry
+              value: http://telemetry:8080
+            - name: Services__Alarm
+              value: http://alarm:8080
+          ports:
+            - containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: reporting
+  namespace: alpha-scada
+spec:
+  selector:
+    app: alpha-scada-reporting
+  ports:
+    - port: 8080
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alpha-scada-edge
+  namespace: alpha-scada
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: alpha-scada-edge
+  template:
+    metadata:
+      labels:
+        app: alpha-scada-edge
+    spec:
+      containers:
+        - name: edge
+          image: alpha-scada-edge:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: alpha-scada-config
+          env:
+            - name: ConnectionStrings__Postgres
+              value: Host=postgres;Port=5432;Database=alpha_edge;Username=alpha;Password=alpha
+            - name: Services__Tenant
+              value: http://tenant:8080
+            - name: Services__Asset
+              value: http://asset:8080
+            - name: Services__TagCatalog
+              value: http://tag-catalog:8080
+            - name: Services__Telemetry
+              value: http://telemetry:8080
+            - name: Services__Alarm
+              value: http://alarm:8080
+            - name: Services__Gateway
+              value: http://gateway:8080
+          ports:
+            - containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: edge
+  namespace: alpha-scada
+spec:
+  selector:
+    app: alpha-scada-edge
+  ports:
+    - port: 8080
+      targetPort: 8080

@@ -1,6 +1,6 @@
-using Alpha.Scada.Api.Data;
-using Alpha.Scada.Api.Modules.Auth;
-using Alpha.Scada.Api.Modules.EdgeIngestion;
+using Alpha.Scada.Contracts;
+using Alpha.Scada.Edge.Domain;
+using Alpha.Scada.Identity.Infrastructure;
 
 namespace Alpha.Scada.Tests;
 
@@ -44,8 +44,6 @@ public sealed class ContractTests
     [InlineData(Roles.SupportEngineer, true)]
     public void Alarm_acknowledgement_permissions_follow_fixed_roles(string role, bool expected)
     {
-        var user = new CurrentUser(Guid.NewGuid(), Guid.NewGuid(), "user@example.com", "User", role);
-
-        Assert.Equal(expected, AuthEndpointFilter.CanAcknowledge(user));
+        Assert.Equal(expected, RoleRules.CanAcknowledge(role));
     }
 }

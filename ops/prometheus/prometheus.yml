@@ -2,8 +2,16 @@ global:
   scrape_interval: 15s
 
 scrape_configs:
-  - job_name: alpha-scada-api
+  - job_name: alpha-scada-services
     metrics_path: /metrics
     static_configs:
       - targets:
-          - api:8080
+          - gateway:8080
+          - identity:8080
+          - tenant:8080
+          - asset:8080
+          - tag-catalog:8080
+          - telemetry:8080
+          - alarm:8080
+          - reporting:8080
+          - edge:8080

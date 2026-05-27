@@ -2,16 +2,53 @@
 
 Stage 2+3 implementation slice for the Alpha Combined Heat and Power Unit SCADA platform.
 
+For the detailed architecture, service map, data flows, and code navigation guide, see [docs/system-overview.md](docs/system-overview.md).
+
 Current capabilities:
 
-- ASP.NET Core `.NET 10` modular monolith.
-- PostgreSQL-backed tenants, sites, units, tags, current values, history, alarms, users, sessions, audit events, edge devices, and report runs.
+- ASP.NET Core `.NET 10` Gateway/BFF plus eight Clean Architecture domain services.
+- Separate PostgreSQL databases for identity, tenant, asset, tag catalog, edge, telemetry, alarm, and reporting ownership.
+- HTTP-only internal service communication for v1.
 - Versioned Node-RED/MQTT telemetry contract through Mosquitto.
-- SignalR realtime hub at `/hubs/telemetry`.
+- Gateway-owned SignalR realtime hub at `/hubs/telemetry`.
 - Local user login with PBKDF2 password hashing and fixed roles.
 - React/Vite frontend with login, site/unit navigation, Combined Heat and Power Unit overview, alarms, and monthly reports.
-- Optional database-backed Combined Heat and Power Unit simulator for local development.
+- Optional Edge-hosted Combined Heat and Power Unit simulator for local development.
+- Edge-hosted communication-loss monitor that marks stale units offline and raises alarms.
 - Docker Compose for local/dev and k3s manifests for production-like deployment.
+
+## Service Layout
+
+```text
+Alpha.Scada.Gateway      Public API/BFF, frontend-compatible routes, SignalR
+Alpha.Scada.Identity     Users, roles, login, JWT issuing
+Alpha.Scada.Tenant       Tenant records and support visibility
+Alpha.Scada.Asset        Sites, units, status, key resolution
+Alpha.Scada.TagCatalog   Subsystems, tag definitions, units, thresholds
+Alpha.Scada.Edge         MQTT worker, topic parsing, payload validation
+Alpha.Scada.Telemetry    Current values, history, aggregates
+Alpha.Scada.Alarm        Alarm evaluation, acknowledge, clear lifecycle
+Alpha.Scada.Reporting    Monthly report runs and orchestration
+```
+
+## Repository Map
+
+```text
+src/Alpha.Scada.Gateway          Public API/BFF and SignalR
+src/Alpha.Scada.Identity         Local auth, users, roles, JWT issuing
+src/Alpha.Scada.Tenant           Tenant lookup and tenant visibility
+src/Alpha.Scada.Asset            Sites, units, status, key resolution
+src/Alpha.Scada.TagCatalog       Tag definitions and alarm thresholds
+src/Alpha.Scada.Edge             MQTT ingestion, simulator, communication-loss monitor
+src/Alpha.Scada.Telemetry        Current values, history, aggregates
+src/Alpha.Scada.Alarm            Alarm rules and lifecycle
+src/Alpha.Scada.Reporting        Monthly report orchestration
+src/Alpha.Scada.Contracts        Shared DTOs and role rules
+src/Alpha.Scada.ServiceDefaults  Shared database, JWT, and API helpers
+src/Alpha.Scada.Web              React/Vite frontend
+ops/                             Compose support, k3s, PostgreSQL, Mosquitto, observability
+tests/                           xUnit contract and rule tests
+```
 
 ## Demo Credentials
 
@@ -48,10 +85,18 @@ Start infrastructure:
 docker compose up -d postgres mosquitto
 ```
 
-Start API:
+Start services in separate terminals:
 
 ```bash
-dotnet run --project src/Alpha.Scada.Api/Alpha.Scada.Api.csproj --no-launch-profile --urls http://localhost:5202
+dotnet run --project src/Alpha.Scada.Identity/Alpha.Scada.Identity.csproj --no-launch-profile --urls http://localhost:5210
+dotnet run --project src/Alpha.Scada.Tenant/Alpha.Scada.Tenant.csproj --no-launch-profile --urls http://localhost:5211
+dotnet run --project src/Alpha.Scada.Asset/Alpha.Scada.Asset.csproj --no-launch-profile --urls http://localhost:5212
+dotnet run --project src/Alpha.Scada.TagCatalog/Alpha.Scada.TagCatalog.csproj --no-launch-profile --urls http://localhost:5213
+dotnet run --project src/Alpha.Scada.Telemetry/Alpha.Scada.Telemetry.csproj --no-launch-profile --urls http://localhost:5214
+dotnet run --project src/Alpha.Scada.Alarm/Alpha.Scada.Alarm.csproj --no-launch-profile --urls http://localhost:5215
+dotnet run --project src/Alpha.Scada.Reporting/Alpha.Scada.Reporting.csproj --no-launch-profile --urls http://localhost:5216
+dotnet run --project src/Alpha.Scada.Gateway/Alpha.Scada.Gateway.csproj --no-launch-profile --urls http://localhost:5202
+dotnet run --project src/Alpha.Scada.Edge/Alpha.Scada.Edge.csproj --no-launch-profile --urls http://localhost:5217
 ```
 
 Start frontend:

@@ -1,6 +1,16 @@
 <Solution>
   <Folder Name="/src/">
-    <Project Path="src/Alpha.Scada.Api/Alpha.Scada.Api.csproj" />
+    <Project Path="src/Alpha.Scada.Alarm/Alpha.Scada.Alarm.csproj" />
+    <Project Path="src/Alpha.Scada.Asset/Alpha.Scada.Asset.csproj" />
+    <Project Path="src/Alpha.Scada.Contracts/Alpha.Scada.Contracts.csproj" />
+    <Project Path="src/Alpha.Scada.Edge/Alpha.Scada.Edge.csproj" />
+    <Project Path="src/Alpha.Scada.Gateway/Alpha.Scada.Gateway.csproj" />
+    <Project Path="src/Alpha.Scada.Identity/Alpha.Scada.Identity.csproj" />
+    <Project Path="src/Alpha.Scada.Reporting/Alpha.Scada.Reporting.csproj" />
+    <Project Path="src/Alpha.Scada.ServiceDefaults/Alpha.Scada.ServiceDefaults.csproj" />
+    <Project Path="src/Alpha.Scada.TagCatalog/Alpha.Scada.TagCatalog.csproj" />
+    <Project Path="src/Alpha.Scada.Telemetry/Alpha.Scada.Telemetry.csproj" />
+    <Project Path="src/Alpha.Scada.Tenant/Alpha.Scada.Tenant.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Alpha.Scada.Tests/Alpha.Scada.Tests.csproj" />

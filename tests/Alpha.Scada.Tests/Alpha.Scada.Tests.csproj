@@ -19,7 +19,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Alpha.Scada.Api\Alpha.Scada.Api.csproj" />
+    <ProjectReference Include="..\..\src\Alpha.Scada.Contracts\Alpha.Scada.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Alpha.Scada.Edge\Alpha.Scada.Edge.csproj" />
+    <ProjectReference Include="..\..\src\Alpha.Scada.Identity\Alpha.Scada.Identity.csproj" />
   </ItemGroup>
 
 </Project>

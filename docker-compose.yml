@@ -1,20 +1,175 @@
 services:
-  api:
+  gateway:
     build:
       context: .
-      dockerfile: src/Alpha.Scada.Api/Dockerfile
+      dockerfile: src/Dockerfile.service
+      args:
+        PROJECT: src/Alpha.Scada.Gateway/Alpha.Scada.Gateway.csproj
+        DLL: Alpha.Scada.Gateway.dll
     environment:
       ASPNETCORE_URLS: http://+:8080
-      ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=alpha_scada;Username=alpha;Password=alpha
-      Simulator__Enabled: "true"
-      Mqtt__Enabled: "true"
-      Mqtt__Host: mosquitto
-      Mqtt__Port: "1883"
+      Jwt__Secret: alpha-scada-local-development-secret-change-me-32
+      Services__Identity: http://identity:8080
+      Services__Tenant: http://tenant:8080
+      Services__Asset: http://asset:8080
+      Services__TagCatalog: http://tag-catalog:8080
+      Services__Telemetry: http://telemetry:8080
+      Services__Alarm: http://alarm:8080
+      Services__Reporting: http://reporting:8080
     ports:
       - "5202:8080"
     depends_on:
+      - identity
+      - tenant
+      - asset
+      - tag-catalog
+      - telemetry
+      - alarm
+      - reporting
+
+  identity:
+    build:
+      context: .
+      dockerfile: src/Dockerfile.service
+      args:
+        PROJECT: src/Alpha.Scada.Identity/Alpha.Scada.Identity.csproj
+        DLL: Alpha.Scada.Identity.dll
+    environment:
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=alpha_identity;Username=alpha;Password=alpha
+      Jwt__Secret: alpha-scada-local-development-secret-change-me-32
+    ports:
+      - "5210:8080"
+    depends_on:
+      - postgres
+
+  tenant:
+    build:
+      context: .
+      dockerfile: src/Dockerfile.service
+      args:
+        PROJECT: src/Alpha.Scada.Tenant/Alpha.Scada.Tenant.csproj
+        DLL: Alpha.Scada.Tenant.dll
+    environment:
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=alpha_tenant;Username=alpha;Password=alpha
+    ports:
+      - "5211:8080"
+    depends_on:
+      - postgres
+
+  asset:
+    build:
+      context: .
+      dockerfile: src/Dockerfile.service
+      args:
+        PROJECT: src/Alpha.Scada.Asset/Alpha.Scada.Asset.csproj
+        DLL: Alpha.Scada.Asset.dll
+    environment:
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=alpha_asset;Username=alpha;Password=alpha
+    ports:
+      - "5212:8080"
+    depends_on:
+      - postgres
+
+  tag-catalog:
+    build:
+      context: .
+      dockerfile: src/Dockerfile.service
+      args:
+        PROJECT: src/Alpha.Scada.TagCatalog/Alpha.Scada.TagCatalog.csproj
+        DLL: Alpha.Scada.TagCatalog.dll
+    environment:
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=alpha_tag_catalog;Username=alpha;Password=alpha
+    ports:
+      - "5213:8080"
+    depends_on:
+      - postgres
+
+  telemetry:
+    build:
+      context: .
+      dockerfile: src/Dockerfile.service
+      args:
+        PROJECT: src/Alpha.Scada.Telemetry/Alpha.Scada.Telemetry.csproj
+        DLL: Alpha.Scada.Telemetry.dll
+    environment:
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=alpha_telemetry;Username=alpha;Password=alpha
+    ports:
+      - "5214:8080"
+    depends_on:
+      - postgres
+
+  alarm:
+    build:
+      context: .
+      dockerfile: src/Dockerfile.service
+      args:
+        PROJECT: src/Alpha.Scada.Alarm/Alpha.Scada.Alarm.csproj
+        DLL: Alpha.Scada.Alarm.dll
+    environment:
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=alpha_alarm;Username=alpha;Password=alpha
+    ports:
+      - "5215:8080"
+    depends_on:
+      - postgres
+
+  reporting:
+    build:
+      context: .
+      dockerfile: src/Dockerfile.service
+      args:
+        PROJECT: src/Alpha.Scada.Reporting/Alpha.Scada.Reporting.csproj
+        DLL: Alpha.Scada.Reporting.dll
+    environment:
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=alpha_reporting;Username=alpha;Password=alpha
+      Services__Asset: http://asset:8080
+      Services__Telemetry: http://telemetry:8080
+      Services__Alarm: http://alarm:8080
+    ports:
+      - "5216:8080"
+    depends_on:
+      - postgres
+      - asset
+      - telemetry
+      - alarm
+
+  edge:
+    build:
+      context: .
+      dockerfile: src/Dockerfile.service
+      args:
+        PROJECT: src/Alpha.Scada.Edge/Alpha.Scada.Edge.csproj
+        DLL: Alpha.Scada.Edge.dll
+    environment:
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=alpha_edge;Username=alpha;Password=alpha
+      Mqtt__Enabled: "true"
+      Mqtt__Host: mosquitto
+      Mqtt__Port: "1883"
+      Simulator__Enabled: "true"
+      Services__Tenant: http://tenant:8080
+      Services__Asset: http://asset:8080
+      Services__TagCatalog: http://tag-catalog:8080
+      Services__Telemetry: http://telemetry:8080
+      Services__Alarm: http://alarm:8080
+      Services__Gateway: http://gateway:8080
+    ports:
+      - "5217:8080"
+    depends_on:
       - postgres
       - mosquitto
+      - tenant
+      - asset
+      - tag-catalog
+      - telemetry
+      - alarm
+      - gateway
 
   frontend:
     build:
@@ -23,12 +178,12 @@ services:
     ports:
       - "8080:80"
     depends_on:
-      - api
+      - gateway
 
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: alpha_scada
+      POSTGRES_DB: alpha_identity
       POSTGRES_USER: alpha
       POSTGRES_PASSWORD: alpha
     ports:
