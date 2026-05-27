@@ -10,6 +10,7 @@ builder.Services.AddServiceDatabase(builder.Configuration);
 builder.Services.AddSingleton<TagCatalogMigrator>();
 builder.Services.AddSingleton<TagCatalogRepository>();
 builder.Services.AddSingleton<TagCatalogService>();
+builder.Services.AddSingleton<JwtTokenService>();
 
 var app = builder.Build();
 await app.Services.GetRequiredService<TagCatalogMigrator>().MigrateAsync(CancellationToken.None);
@@ -18,9 +19,9 @@ app.MapGet("/health", () => Results.Ok(new { status = "ok", service = serviceNam
 app.MapGet("/ready", MinimalApi.ReadyAsync);
 app.MapGet("/metrics", () => MinimalApi.Metrics(serviceName));
 
-app.MapGet("/internal/v1/units/{unitId:guid}/tags", async (Guid unitId, HttpContext context, TagCatalogService service) =>
+app.MapGet("/internal/v1/units/{unitId:guid}/tags", async (Guid unitId, HttpContext context, JwtTokenService tokens, TagCatalogService service) =>
 {
-    var user = HttpUserContext.FromHeaders(context.Request.Headers);
+    var user = HttpUserContext.FromBearerToken(context.Request.Headers, tokens);
     return user is null ? Results.Unauthorized() : Results.Ok(await service.GetTagsForUnitAsync(unitId, user, context.RequestAborted));
 });
 

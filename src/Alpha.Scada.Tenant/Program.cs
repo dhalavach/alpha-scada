@@ -9,6 +9,7 @@ builder.Services.AddServiceDatabase(builder.Configuration);
 builder.Services.AddSingleton<TenantMigrator>();
 builder.Services.AddSingleton<TenantRepository>();
 builder.Services.AddSingleton<TenantService>();
+builder.Services.AddSingleton<JwtTokenService>();
 
 var app = builder.Build();
 await app.Services.GetRequiredService<TenantMigrator>().MigrateAsync(CancellationToken.None);
@@ -17,9 +18,9 @@ app.MapGet("/health", () => Results.Ok(new { status = "ok", service = serviceNam
 app.MapGet("/ready", MinimalApi.ReadyAsync);
 app.MapGet("/metrics", () => MinimalApi.Metrics(serviceName));
 
-app.MapGet("/internal/v1/tenants", async (HttpContext context, TenantService service) =>
+app.MapGet("/internal/v1/tenants", async (HttpContext context, JwtTokenService tokens, TenantService service) =>
 {
-    var user = HttpUserContext.FromHeaders(context.Request.Headers);
+    var user = HttpUserContext.FromBearerToken(context.Request.Headers, tokens);
     if (user is null)
     {
         return Results.Unauthorized();

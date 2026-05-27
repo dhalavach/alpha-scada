@@ -41,7 +41,7 @@ app.MapPost("/api/auth/logout", async (HttpContext context, JwtTokenService toke
 {
     var user = GatewayAuth.Authenticate(context, tokens);
     if (user is null) return Results.Unauthorized();
-    var request = new HttpRequestMessage(HttpMethod.Post, "/internal/v1/auth/logout").WithUser(user);
+    var request = new HttpRequestMessage(HttpMethod.Post, "/internal/v1/auth/logout").WithBearerToken(context);
     await factory.CreateClient("identity").SendAsync(request, context.RequestAborted);
     return Results.NoContent();
 });
@@ -56,28 +56,28 @@ app.MapGet("/api/tenants", async (HttpContext context, JwtTokenService tokens, I
 {
     var user = GatewayAuth.Authenticate(context, tokens);
     if (user is null) return Results.Unauthorized();
-    return await ForwardGetAsync<IReadOnlyCollection<TenantDto>>(factory.CreateClient("tenant"), "/internal/v1/tenants", user, context.RequestAborted);
+    return await ForwardGetAsync<IReadOnlyCollection<TenantDto>>(factory.CreateClient("tenant"), "/internal/v1/tenants", context, context.RequestAborted);
 });
 
 app.MapGet("/api/sites", async (HttpContext context, JwtTokenService tokens, IHttpClientFactory factory) =>
 {
     var user = GatewayAuth.Authenticate(context, tokens);
     if (user is null) return Results.Unauthorized();
-    return await ForwardGetAsync<IReadOnlyCollection<SiteDto>>(factory.CreateClient("asset"), "/internal/v1/sites", user, context.RequestAborted);
+    return await ForwardGetAsync<IReadOnlyCollection<SiteDto>>(factory.CreateClient("asset"), "/internal/v1/sites", context, context.RequestAborted);
 });
 
 app.MapGet("/api/sites/{siteId:guid}/units", async (Guid siteId, HttpContext context, JwtTokenService tokens, IHttpClientFactory factory) =>
 {
     var user = GatewayAuth.Authenticate(context, tokens);
     if (user is null) return Results.Unauthorized();
-    return await ForwardGetAsync<IReadOnlyCollection<UnitDto>>(factory.CreateClient("asset"), $"/internal/v1/sites/{siteId}/units", user, context.RequestAborted);
+    return await ForwardGetAsync<IReadOnlyCollection<UnitDto>>(factory.CreateClient("asset"), $"/internal/v1/sites/{siteId}/units", context, context.RequestAborted);
 });
 
 app.MapGet("/api/units/{unitId:guid}", async (Guid unitId, HttpContext context, JwtTokenService tokens, IHttpClientFactory factory) =>
 {
     var user = GatewayAuth.Authenticate(context, tokens);
     if (user is null) return Results.Unauthorized();
-    return await ForwardGetAsync<UnitDto>(factory.CreateClient("asset"), $"/internal/v1/units/{unitId}", user, context.RequestAborted);
+    return await ForwardGetAsync<UnitDto>(factory.CreateClient("asset"), $"/internal/v1/units/{unitId}", context, context.RequestAborted);
 });
 
 app.MapGet("/api/units/{unitId:guid}/tags/current", async (Guid unitId, HttpContext context, JwtTokenService tokens, IHttpClientFactory factory) =>
@@ -85,8 +85,8 @@ app.MapGet("/api/units/{unitId:guid}/tags/current", async (Guid unitId, HttpCont
     var user = GatewayAuth.Authenticate(context, tokens);
     if (user is null) return Results.Unauthorized();
 
-    var tagRequest = new HttpRequestMessage(HttpMethod.Get, $"/internal/v1/units/{unitId}/tags").WithUser(user);
-    var currentRequest = new HttpRequestMessage(HttpMethod.Get, $"/internal/v1/telemetry/units/{unitId}/current").WithUser(user);
+    var tagRequest = new HttpRequestMessage(HttpMethod.Get, $"/internal/v1/units/{unitId}/tags").WithBearerToken(context);
+    var currentRequest = new HttpRequestMessage(HttpMethod.Get, $"/internal/v1/telemetry/units/{unitId}/current").WithBearerToken(context);
     var tagResponse = await factory.CreateClient("tagCatalog").SendAsync(tagRequest, context.RequestAborted);
     var currentResponse = await factory.CreateClient("telemetry").SendAsync(currentRequest, context.RequestAborted);
     if (!tagResponse.IsSuccessStatusCode || !currentResponse.IsSuccessStatusCode)
@@ -122,7 +122,7 @@ app.MapGet("/api/tags/{tagId:guid}/history", async (Guid tagId, int? minutes, Ht
     return await ForwardGetAsync<IReadOnlyCollection<TelemetryHistoryPointDto>>(
         factory.CreateClient("telemetry"),
         $"/internal/v1/telemetry/tags/{tagId}/history?minutes={minutes ?? 30}",
-        user,
+        context,
         context.RequestAborted);
 });
 
@@ -130,14 +130,14 @@ app.MapGet("/api/alarms/active", async (HttpContext context, JwtTokenService tok
 {
     var user = GatewayAuth.Authenticate(context, tokens);
     if (user is null) return Results.Unauthorized();
-    return await ForwardGetAsync<IReadOnlyCollection<AlarmDto>>(factory.CreateClient("alarm"), "/internal/v1/alarms/active", user, context.RequestAborted);
+    return await ForwardGetAsync<IReadOnlyCollection<AlarmDto>>(factory.CreateClient("alarm"), "/internal/v1/alarms/active", context, context.RequestAborted);
 });
 
 app.MapPost("/api/alarms/{alarmId:guid}/ack", async (Guid alarmId, HttpContext context, JwtTokenService tokens, IHttpClientFactory factory) =>
 {
     var user = GatewayAuth.Authenticate(context, tokens);
     if (user is null) return Results.Unauthorized();
-    var request = new HttpRequestMessage(HttpMethod.Post, $"/internal/v1/alarms/{alarmId}/ack").WithUser(user);
+    var request = new HttpRequestMessage(HttpMethod.Post, $"/internal/v1/alarms/{alarmId}/ack").WithBearerToken(context);
     var response = await factory.CreateClient("alarm").SendAsync(request, context.RequestAborted);
     return Results.StatusCode((int)response.StatusCode);
 });
@@ -146,7 +146,7 @@ app.MapGet("/api/reports/monthly", async (HttpContext context, JwtTokenService t
 {
     var user = GatewayAuth.Authenticate(context, tokens);
     if (user is null) return Results.Unauthorized();
-    return await ForwardGetAsync<IReadOnlyCollection<MonthlyReportDto>>(factory.CreateClient("reporting"), "/internal/v1/reports/monthly", user, context.RequestAborted);
+    return await ForwardGetAsync<IReadOnlyCollection<MonthlyReportDto>>(factory.CreateClient("reporting"), "/internal/v1/reports/monthly", context, context.RequestAborted);
 });
 
 app.MapPost("/api/reports/monthly/run", async (ReportRunRequest request, HttpContext context, JwtTokenService tokens, IHttpClientFactory factory) =>
@@ -156,7 +156,7 @@ app.MapPost("/api/reports/monthly/run", async (ReportRunRequest request, HttpCon
     var downstream = new HttpRequestMessage(HttpMethod.Post, "/internal/v1/reports/monthly/run")
     {
         Content = JsonContent.Create(request)
-    }.WithUser(user);
+    }.WithBearerToken(context);
     var response = await factory.CreateClient("reporting").SendAsync(downstream, context.RequestAborted);
     return response.IsSuccessStatusCode
         ? Results.Ok(await response.Content.ReadFromJsonAsync<MonthlyReportDto>(context.RequestAborted))
@@ -185,9 +185,9 @@ app.MapHub<TelemetryHub>("/hubs/telemetry");
 
 app.Run();
 
-static async Task<IResult> ForwardGetAsync<T>(HttpClient client, string path, CurrentUserDto user, CancellationToken cancellationToken)
+static async Task<IResult> ForwardGetAsync<T>(HttpClient client, string path, HttpContext context, CancellationToken cancellationToken)
 {
-    var request = new HttpRequestMessage(HttpMethod.Get, path).WithUser(user);
+    var request = new HttpRequestMessage(HttpMethod.Get, path).WithBearerToken(context);
     var response = await client.SendAsync(request, cancellationToken);
     return response.IsSuccessStatusCode
         ? Results.Ok(await response.Content.ReadFromJsonAsync<T>(cancellationToken))

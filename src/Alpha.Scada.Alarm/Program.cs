@@ -10,6 +10,7 @@ builder.Services.AddServiceDatabase(builder.Configuration);
 builder.Services.AddSingleton<AlarmMigrator>();
 builder.Services.AddSingleton<AlarmRepository>();
 builder.Services.AddSingleton<AlarmService>();
+builder.Services.AddSingleton<JwtTokenService>();
 
 var app = builder.Build();
 await app.Services.GetRequiredService<AlarmMigrator>().MigrateAsync(CancellationToken.None);
@@ -30,15 +31,15 @@ app.MapPost("/internal/v1/alarms/communication-lost", async (UnitDto unit, Alarm
     return Results.NoContent();
 });
 
-app.MapGet("/internal/v1/alarms/active", async (HttpContext context, AlarmService service) =>
+app.MapGet("/internal/v1/alarms/active", async (HttpContext context, JwtTokenService tokens, AlarmService service) =>
 {
-    var user = HttpUserContext.FromHeaders(context.Request.Headers);
+    var user = HttpUserContext.FromBearerToken(context.Request.Headers, tokens);
     return user is null ? Results.Unauthorized() : Results.Ok(await service.GetActiveAsync(user, context.RequestAborted));
 });
 
-app.MapPost("/internal/v1/alarms/{alarmId:guid}/ack", async (Guid alarmId, HttpContext context, AlarmService service) =>
+app.MapPost("/internal/v1/alarms/{alarmId:guid}/ack", async (Guid alarmId, HttpContext context, JwtTokenService tokens, AlarmService service) =>
 {
-    var user = HttpUserContext.FromHeaders(context.Request.Headers);
+    var user = HttpUserContext.FromBearerToken(context.Request.Headers, tokens);
     if (user is null) return Results.Unauthorized();
     if (!RoleRules.CanAcknowledge(user.Role)) return Results.StatusCode(StatusCodes.Status403Forbidden);
     var changed = await service.AcknowledgeAsync(alarmId, user, context.RequestAborted);

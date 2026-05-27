@@ -16,9 +16,9 @@ public static class GatewayAuth
         return tokens.Validate(header["Bearer ".Length..].Trim());
     }
 
-    public static HttpRequestMessage WithUser(this HttpRequestMessage request, CurrentUserDto user)
+    public static HttpRequestMessage WithBearerToken(this HttpRequestMessage request, HttpContext context)
     {
-        request.AddUserHeaders(user);
+        request.ForwardAuthorizationFrom(context.Request);
         return request;
     }
 }

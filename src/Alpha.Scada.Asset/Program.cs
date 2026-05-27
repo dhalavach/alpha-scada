@@ -9,6 +9,7 @@ builder.Services.AddServiceDatabase(builder.Configuration);
 builder.Services.AddSingleton<AssetMigrator>();
 builder.Services.AddSingleton<AssetRepository>();
 builder.Services.AddSingleton<AssetService>();
+builder.Services.AddSingleton<JwtTokenService>();
 
 var app = builder.Build();
 await app.Services.GetRequiredService<AssetMigrator>().MigrateAsync(CancellationToken.None);
@@ -17,21 +18,21 @@ app.MapGet("/health", () => Results.Ok(new { status = "ok", service = serviceNam
 app.MapGet("/ready", MinimalApi.ReadyAsync);
 app.MapGet("/metrics", () => MinimalApi.Metrics(serviceName));
 
-app.MapGet("/internal/v1/sites", async (HttpContext context, AssetService service) =>
+app.MapGet("/internal/v1/sites", async (HttpContext context, JwtTokenService tokens, AssetService service) =>
 {
-    var user = HttpUserContext.FromHeaders(context.Request.Headers);
+    var user = HttpUserContext.FromBearerToken(context.Request.Headers, tokens);
     return user is null ? Results.Unauthorized() : Results.Ok(await service.GetSitesAsync(user, context.RequestAborted));
 });
 
-app.MapGet("/internal/v1/sites/{siteId:guid}/units", async (Guid siteId, HttpContext context, AssetService service) =>
+app.MapGet("/internal/v1/sites/{siteId:guid}/units", async (Guid siteId, HttpContext context, JwtTokenService tokens, AssetService service) =>
 {
-    var user = HttpUserContext.FromHeaders(context.Request.Headers);
+    var user = HttpUserContext.FromBearerToken(context.Request.Headers, tokens);
     return user is null ? Results.Unauthorized() : Results.Ok(await service.GetUnitsForSiteAsync(siteId, user, context.RequestAborted));
 });
 
-app.MapGet("/internal/v1/units/{unitId:guid}", async (Guid unitId, HttpContext context, AssetService service) =>
+app.MapGet("/internal/v1/units/{unitId:guid}", async (Guid unitId, HttpContext context, JwtTokenService tokens, AssetService service) =>
 {
-    var user = HttpUserContext.FromHeaders(context.Request.Headers);
+    var user = HttpUserContext.FromBearerToken(context.Request.Headers, tokens);
     if (user is null) return Results.Unauthorized();
     var unit = await service.GetUnitAsync(unitId, user, context.RequestAborted);
     return unit is null ? Results.NotFound() : Results.Ok(unit);

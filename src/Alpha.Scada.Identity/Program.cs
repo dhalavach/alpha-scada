@@ -26,9 +26,9 @@ app.MapPost("/internal/v1/auth/login", async (LoginRequest request, AuthService 
     return response is null ? Results.Unauthorized() : Results.Ok(response);
 });
 
-app.MapPost("/internal/v1/auth/logout", async (HttpContext context, IdentityRepository repository) =>
+app.MapPost("/internal/v1/auth/logout", async (HttpContext context, JwtTokenService tokens, IdentityRepository repository) =>
 {
-    var user = HttpUserContext.FromHeaders(context.Request.Headers);
+    var user = HttpUserContext.FromBearerToken(context.Request.Headers, tokens);
     if (user is not null)
     {
         await repository.WriteAuditAsync(user.TenantId, user.UserId, "auth.logout", "User logged out", context.RequestAborted);

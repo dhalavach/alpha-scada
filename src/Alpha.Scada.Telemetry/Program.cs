@@ -10,6 +10,7 @@ builder.Services.AddServiceDatabase(builder.Configuration);
 builder.Services.AddSingleton<TelemetryMigrator>();
 builder.Services.AddSingleton<TelemetryRepository>();
 builder.Services.AddSingleton<TelemetryService>();
+builder.Services.AddSingleton<JwtTokenService>();
 
 var app = builder.Build();
 await app.Services.GetRequiredService<TelemetryMigrator>().MigrateAsync(CancellationToken.None);
@@ -24,15 +25,15 @@ app.MapPost("/internal/v1/telemetry/ingest", async (TelemetryIngestRequest reque
     return Results.NoContent();
 });
 
-app.MapGet("/internal/v1/telemetry/units/{unitId:guid}/current", async (Guid unitId, HttpContext context, TelemetryService service) =>
+app.MapGet("/internal/v1/telemetry/units/{unitId:guid}/current", async (Guid unitId, HttpContext context, JwtTokenService tokens, TelemetryService service) =>
 {
-    var user = HttpUserContext.FromHeaders(context.Request.Headers);
+    var user = HttpUserContext.FromBearerToken(context.Request.Headers, tokens);
     return user is null ? Results.Unauthorized() : Results.Ok(await service.GetCurrentAsync(unitId, user, context.RequestAborted));
 });
 
-app.MapGet("/internal/v1/telemetry/tags/{tagId:guid}/history", async (Guid tagId, int? minutes, HttpContext context, TelemetryService service) =>
+app.MapGet("/internal/v1/telemetry/tags/{tagId:guid}/history", async (Guid tagId, int? minutes, HttpContext context, JwtTokenService tokens, TelemetryService service) =>
 {
-    var user = HttpUserContext.FromHeaders(context.Request.Headers);
+    var user = HttpUserContext.FromBearerToken(context.Request.Headers, tokens);
     if (user is null) return Results.Unauthorized();
     var window = TimeSpan.FromMinutes(Math.Clamp(minutes ?? 30, 1, 24 * 60));
     return Results.Ok(await service.GetHistoryAsync(tagId, window, user, context.RequestAborted));

@@ -5,30 +5,28 @@ namespace Alpha.Scada.ServiceDefaults;
 
 public static class HttpUserContext
 {
-    public static CurrentUserDto? FromHeaders(IHeaderDictionary headers)
+    public static CurrentUserDto? FromBearerToken(IHeaderDictionary headers, JwtTokenService tokens)
     {
-        return Guid.TryParse(headers["X-User-Id"], out var userId)
-            && Guid.TryParse(headers["X-Tenant-Id"], out var tenantId)
-            ? new CurrentUserDto(
-                userId,
-                tenantId,
-                headers["X-User-Email"].ToString(),
-                headers["X-User-Name"].ToString(),
-                headers["X-User-Role"].ToString())
-            : null;
+        var header = headers.Authorization.ToString();
+        if (!header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return tokens.Validate(header["Bearer ".Length..].Trim());
     }
 
-    public static void AddUserHeaders(this HttpRequestMessage request, CurrentUserDto user)
+    public static void ForwardAuthorizationFrom(this HttpRequestMessage request, HttpRequest source)
     {
-        request.Headers.Remove("X-User-Id");
-        request.Headers.Remove("X-Tenant-Id");
-        request.Headers.Remove("X-User-Email");
-        request.Headers.Remove("X-User-Name");
-        request.Headers.Remove("X-User-Role");
-        request.Headers.Add("X-User-Id", user.UserId.ToString());
-        request.Headers.Add("X-Tenant-Id", user.TenantId.ToString());
-        request.Headers.Add("X-User-Email", user.Email);
-        request.Headers.Add("X-User-Name", user.DisplayName);
-        request.Headers.Add("X-User-Role", user.Role);
+        request.ForwardAuthorization(source.Headers.Authorization.ToString());
+    }
+
+    public static void ForwardAuthorization(this HttpRequestMessage request, string authorizationHeader)
+    {
+        request.Headers.Remove("Authorization");
+        if (!string.IsNullOrWhiteSpace(authorizationHeader))
+        {
+            request.Headers.TryAddWithoutValidation("Authorization", authorizationHeader);
+        }
     }
 }

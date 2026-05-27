@@ -6,9 +6,9 @@ namespace Alpha.Scada.ServiceDefaults;
 
 public static class MinimalApi
 {
-    public static IResult RequireUser(HttpContext context, Func<CurrentUserDto, IResult> next)
+    public static IResult RequireUser(HttpContext context, JwtTokenService tokens, Func<CurrentUserDto, IResult> next)
     {
-        var user = HttpUserContext.FromHeaders(context.Request.Headers);
+        var user = HttpUserContext.FromBearerToken(context.Request.Headers, tokens);
         return user is null ? Results.Unauthorized() : next(user);
     }
 

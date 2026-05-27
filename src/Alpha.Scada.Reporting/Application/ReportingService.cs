@@ -9,12 +9,12 @@ public sealed class ReportingService(
     IHttpClientFactory httpClientFactory,
     ReportingRepository repository)
 {
-    public async Task<MonthlyReportDto> RunMonthlyAsync(ReportRunRequest request, CurrentUserDto user, CancellationToken cancellationToken)
+    public async Task<MonthlyReportDto> RunMonthlyAsync(ReportRunRequest request, CurrentUserDto user, string authorizationHeader, CancellationToken cancellationToken)
     {
         var period = string.IsNullOrWhiteSpace(request.Period) ? DateTimeOffset.UtcNow.ToString("yyyy-MM") : request.Period;
         var asset = httpClientFactory.CreateClient("asset");
         var unitRequest = new HttpRequestMessage(HttpMethod.Get, $"/internal/v1/units/{request.UnitId}");
-        unitRequest.AddUserHeaders(user);
+        unitRequest.ForwardAuthorization(authorizationHeader);
         var unit = await (await asset.SendAsync(unitRequest, cancellationToken)).Content.ReadFromJsonAsync<UnitDto>(cancellationToken)
             ?? throw new InvalidOperationException("Unit not found.");
 
