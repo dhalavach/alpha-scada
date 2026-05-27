@@ -62,6 +62,12 @@ support@alpha.local / ChangeMe!123
 
 ## Run With Compose
 
+Create local development secrets first. The generated `.env` file is gitignored and provides `JWT_SECRET` for signed user tokens plus `SERVICE_AUTH_TOKEN` for Edge-to-Gateway realtime callbacks.
+
+```bash
+ops/scripts/dev-setup.sh
+```
+
 ```bash
 docker compose up --build
 ```

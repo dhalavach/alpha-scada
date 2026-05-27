@@ -1,83 +1,90 @@
-using System.Security.Cryptography;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 using System.Text;
-using System.Text.Json;
 using Alpha.Scada.Contracts;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.IdentityModel.Tokens;
 
 namespace Alpha.Scada.ServiceDefaults;
 
 public sealed class JwtTokenService(IConfiguration configuration)
 {
-    private readonly byte[] _secret = GetSigningSecret(configuration);
+    private readonly JwtSecurityTokenHandler _handler = new() { MapInboundClaims = false };
+    private readonly SymmetricSecurityKey _signingKey = new(GetSigningSecret(configuration));
+    private readonly TokenValidationParameters _validationParameters = CreateValidationParameters(configuration);
 
     public static byte[] GetSigningSecret(IConfiguration configuration)
     {
-        return Encoding.UTF8.GetBytes(
-            configuration["Jwt:Secret"]
-            ?? "alpha-scada-local-development-secret-change-me-32");
+        var secret = configuration["Jwt:Secret"];
+        if (string.IsNullOrWhiteSpace(secret))
+        {
+            throw new InvalidOperationException("Jwt:Secret must be configured. Set JWT_SECRET in .env or Jwt__Secret in the environment.");
+        }
+
+        return Encoding.UTF8.GetBytes(secret);
+    }
+
+    public static TokenValidationParameters CreateValidationParameters(IConfiguration configuration)
+    {
+        return new TokenValidationParameters
+        {
+            IssuerSigningKey = new SymmetricSecurityKey(GetSigningSecret(configuration)),
+            ValidateIssuerSigningKey = true,
+            ValidateIssuer = false,
+            ValidateAudience = false,
+            ValidateLifetime = true,
+            ClockSkew = TimeSpan.FromSeconds(30),
+            NameClaimType = "name",
+            RoleClaimType = "role"
+        };
     }
 
     public LoginResponse Issue(UserDto user, TimeSpan lifetime)
     {
         var expires = DateTimeOffset.UtcNow.Add(lifetime);
-        var header = Base64Url(JsonSerializer.SerializeToUtf8Bytes(new { alg = "HS256", typ = "JWT" }));
-        var payload = Base64Url(JsonSerializer.SerializeToUtf8Bytes(new Dictionary<string, object?>
+        var descriptor = new SecurityTokenDescriptor
         {
-            ["sub"] = user.Id,
-            ["tenant_id"] = user.TenantId,
-            ["email"] = user.Email,
-            ["name"] = user.DisplayName,
-            ["role"] = user.Role,
-            ["exp"] = expires.ToUnixTimeSeconds()
-        }));
-        var signature = Sign($"{header}.{payload}");
-        return new LoginResponse($"{header}.{payload}.{signature}", expires, user);
+            Subject = new ClaimsIdentity([
+                new Claim(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
+                new Claim("tenant_id", user.TenantId.ToString()),
+                new Claim(JwtRegisteredClaimNames.Email, user.Email),
+                new Claim("name", user.DisplayName),
+                new Claim("role", user.Role)
+            ]),
+            Expires = expires.UtcDateTime,
+            SigningCredentials = new SigningCredentials(_signingKey, SecurityAlgorithms.HmacSha256)
+        };
+        return new LoginResponse(_handler.WriteToken(_handler.CreateToken(descriptor)), expires, user);
     }
 
     public CurrentUserDto? Validate(string token)
     {
-        var parts = token.Split('.');
-        if (parts.Length != 3)
+        try
+        {
+            var principal = _handler.ValidateToken(token, _validationParameters, out _);
+            var userId = Guid.Parse(principal.FindFirstValue(JwtRegisteredClaimNames.Sub) ?? "");
+            var tenantId = Guid.Parse(principal.FindFirstValue("tenant_id") ?? "");
+            return new CurrentUserDto(
+                userId,
+                tenantId,
+                principal.FindFirstValue(JwtRegisteredClaimNames.Email) ?? "",
+                principal.FindFirstValue("name") ?? "",
+                principal.FindFirstValue("role") ?? Roles.Viewer);
+        }
+        catch (Exception ex) when (ex is ArgumentException or FormatException or SecurityTokenException)
         {
             return null;
         }
-
-        var expected = Sign($"{parts[0]}.{parts[1]}");
-        if (!CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(expected), Encoding.UTF8.GetBytes(parts[2])))
-        {
-            return null;
-        }
-
-        using var document = JsonDocument.Parse(Base64UrlDecode(parts[1]));
-        var root = document.RootElement;
-        if (root.GetProperty("exp").GetInt64() <= DateTimeOffset.UtcNow.ToUnixTimeSeconds())
-        {
-            return null;
-        }
-
-        return new CurrentUserDto(
-            root.GetProperty("sub").GetGuid(),
-            root.GetProperty("tenant_id").GetGuid(),
-            root.GetProperty("email").GetString() ?? "",
-            root.GetProperty("name").GetString() ?? "",
-            root.GetProperty("role").GetString() ?? Roles.Viewer);
     }
+}
 
-    private string Sign(string value)
+public static class JwtTokenServiceRegistration
+{
+    public static IServiceCollection AddJwtTokenService(this IServiceCollection services, IConfiguration configuration)
     {
-        using var hmac = new HMACSHA256(_secret);
-        return Base64Url(hmac.ComputeHash(Encoding.UTF8.GetBytes(value)));
-    }
-
-    private static string Base64Url(byte[] bytes)
-    {
-        return Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
-    }
-
-    private static byte[] Base64UrlDecode(string value)
-    {
-        var padded = value.Replace('-', '+').Replace('_', '/');
-        padded = padded.PadRight(padded.Length + ((4 - padded.Length % 4) % 4), '=');
-        return Convert.FromBase64String(padded);
+        _ = JwtTokenService.GetSigningSecret(configuration);
+        services.AddSingleton<JwtTokenService>();
+        return services;
     }
 }

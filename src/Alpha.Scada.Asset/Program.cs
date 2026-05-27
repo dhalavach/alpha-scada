@@ -9,7 +9,7 @@ builder.Services.AddServiceDatabase(builder.Configuration);
 builder.Services.AddSingleton<AssetMigrator>();
 builder.Services.AddSingleton<AssetRepository>();
 builder.Services.AddSingleton<AssetService>();
-builder.Services.AddSingleton<JwtTokenService>();
+builder.Services.AddJwtTokenService(builder.Configuration);
 
 var app = builder.Build();
 await app.Services.GetRequiredService<AssetMigrator>().MigrateAsync(CancellationToken.None);

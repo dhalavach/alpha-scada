@@ -71,4 +71,37 @@ public sealed class ContractTests
 
         Assert.Null(HttpUserContext.FromBearerToken(headers, tokens));
     }
+
+    [Fact]
+    public void Jwt_service_requires_a_configured_secret()
+    {
+        var configuration = new ConfigurationBuilder().Build();
+
+        var error = Assert.Throws<InvalidOperationException>(() => new JwtTokenService(configuration));
+
+        Assert.Contains("Jwt:Secret", error.Message);
+    }
+
+    [Fact]
+    public void Jwt_service_issues_and_validates_user_claims()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Jwt:Secret"] = "test-secret-test-secret-test-secret-32"
+            })
+            .Build();
+        var tokens = new JwtTokenService(configuration);
+        var user = new UserDto(Guid.NewGuid(), Guid.NewGuid(), "admin@example.test", "Admin", Roles.Admin);
+
+        var response = tokens.Issue(user, TimeSpan.FromMinutes(5));
+        var currentUser = tokens.Validate(response.AccessToken);
+
+        Assert.NotNull(currentUser);
+        Assert.Equal(user.Id, currentUser.UserId);
+        Assert.Equal(user.TenantId, currentUser.TenantId);
+        Assert.Equal(user.Email, currentUser.Email);
+        Assert.Equal(user.DisplayName, currentUser.DisplayName);
+        Assert.Equal(user.Role, currentUser.Role);
+    }
 }

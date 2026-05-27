@@ -10,7 +10,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddServiceDatabase(builder.Configuration);
 builder.Services.AddSingleton<IdentityMigrator>();
 builder.Services.AddSingleton<IdentityRepository>();
-builder.Services.AddSingleton<JwtTokenService>();
+builder.Services.AddJwtTokenService(builder.Configuration);
 builder.Services.AddSingleton<AuthService>();
 
 var app = builder.Build();

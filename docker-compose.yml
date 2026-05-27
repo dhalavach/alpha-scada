@@ -8,8 +8,8 @@ services:
         DLL: Alpha.Scada.Gateway.dll
     environment:
       ASPNETCORE_URLS: http://+:8080
-      Jwt__Secret: alpha-scada-local-development-secret-change-me-32
-      ServiceAuth__Token: alpha-scada-local-service-token-change-me-32
+      Jwt__Secret: ${JWT_SECRET:?JWT_SECRET must be set in .env}
+      ServiceAuth__Token: ${SERVICE_AUTH_TOKEN:?SERVICE_AUTH_TOKEN must be set in .env}
       Services__Identity: http://identity:8080
       Services__Tenant: http://tenant:8080
       Services__Asset: http://asset:8080
@@ -40,7 +40,7 @@ services:
     environment:
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=alpha_identity;Username=alpha;Password=alpha
-      Jwt__Secret: alpha-scada-local-development-secret-change-me-32
+      Jwt__Secret: ${JWT_SECRET:?JWT_SECRET must be set in .env}
     networks:
       - alpha-internal
     depends_on:
@@ -56,6 +56,7 @@ services:
     environment:
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=alpha_tenant;Username=alpha;Password=alpha
+      Jwt__Secret: ${JWT_SECRET:?JWT_SECRET must be set in .env}
     networks:
       - alpha-internal
     depends_on:
@@ -71,6 +72,7 @@ services:
     environment:
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=alpha_asset;Username=alpha;Password=alpha
+      Jwt__Secret: ${JWT_SECRET:?JWT_SECRET must be set in .env}
     networks:
       - alpha-internal
     depends_on:
@@ -86,6 +88,7 @@ services:
     environment:
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=alpha_tag_catalog;Username=alpha;Password=alpha
+      Jwt__Secret: ${JWT_SECRET:?JWT_SECRET must be set in .env}
     networks:
       - alpha-internal
     depends_on:
@@ -101,6 +104,7 @@ services:
     environment:
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=alpha_telemetry;Username=alpha;Password=alpha
+      Jwt__Secret: ${JWT_SECRET:?JWT_SECRET must be set in .env}
     networks:
       - alpha-internal
     depends_on:
@@ -116,6 +120,7 @@ services:
     environment:
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=alpha_alarm;Username=alpha;Password=alpha
+      Jwt__Secret: ${JWT_SECRET:?JWT_SECRET must be set in .env}
     networks:
       - alpha-internal
     depends_on:
@@ -131,6 +136,7 @@ services:
     environment:
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=alpha_reporting;Username=alpha;Password=alpha
+      Jwt__Secret: ${JWT_SECRET:?JWT_SECRET must be set in .env}
       Services__Asset: http://asset:8080
       Services__Telemetry: http://telemetry:8080
       Services__Alarm: http://alarm:8080
@@ -155,7 +161,7 @@ services:
       Mqtt__Enabled: "true"
       Mqtt__Host: mosquitto
       Mqtt__Port: "1883"
-      ServiceAuth__Token: alpha-scada-local-service-token-change-me-32
+      ServiceAuth__Token: ${SERVICE_AUTH_TOKEN:?SERVICE_AUTH_TOKEN must be set in .env}
       Simulator__Enabled: "true"
       Services__Tenant: http://tenant:8080
       Services__Asset: http://asset:8080

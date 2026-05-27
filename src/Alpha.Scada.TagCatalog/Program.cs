@@ -10,7 +10,7 @@ builder.Services.AddServiceDatabase(builder.Configuration);
 builder.Services.AddSingleton<TagCatalogMigrator>();
 builder.Services.AddSingleton<TagCatalogRepository>();
 builder.Services.AddSingleton<TagCatalogService>();
-builder.Services.AddSingleton<JwtTokenService>();
+builder.Services.AddJwtTokenService(builder.Configuration);
 
 var app = builder.Build();
 await app.Services.GetRequiredService<TagCatalogMigrator>().MigrateAsync(CancellationToken.None);

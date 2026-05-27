@@ -10,7 +10,7 @@ builder.Services.AddServiceDatabase(builder.Configuration);
 builder.Services.AddSingleton<ReportingMigrator>();
 builder.Services.AddSingleton<ReportingRepository>();
 builder.Services.AddSingleton<ReportingService>();
-builder.Services.AddSingleton<JwtTokenService>();
+builder.Services.AddJwtTokenService(builder.Configuration);
 builder.Services.AddHttpClient("asset", client => client.BaseAddress = new Uri(builder.Configuration["Services:Asset"] ?? "http://localhost:5212"));
 builder.Services.AddHttpClient("telemetry", client => client.BaseAddress = new Uri(builder.Configuration["Services:Telemetry"] ?? "http://localhost:5214"));
 builder.Services.AddHttpClient("alarm", client => client.BaseAddress = new Uri(builder.Configuration["Services:Alarm"] ?? "http://localhost:5215"));

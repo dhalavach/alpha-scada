@@ -5,28 +5,18 @@ using Alpha.Scada.Gateway.Realtime;
 using Alpha.Scada.ServiceDefaults;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.SignalR;
-using Microsoft.IdentityModel.Tokens;
 using System.Security.Cryptography;
 using System.Text;
 
 const string serviceName = "alpha-scada-gateway";
 
 var builder = WebApplication.CreateBuilder(args);
-builder.Services.AddSingleton<JwtTokenService>();
+builder.Services.AddJwtTokenService(builder.Configuration);
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
-        options.TokenValidationParameters = new TokenValidationParameters
-        {
-            IssuerSigningKey = new SymmetricSecurityKey(JwtTokenService.GetSigningSecret(builder.Configuration)),
-            ValidateIssuerSigningKey = true,
-            ValidateIssuer = false,
-            ValidateAudience = false,
-            ValidateLifetime = true,
-            ClockSkew = TimeSpan.FromSeconds(30),
-            NameClaimType = "name",
-            RoleClaimType = "role"
-        };
+        options.MapInboundClaims = false;
+        options.TokenValidationParameters = JwtTokenService.CreateValidationParameters(builder.Configuration);
         options.Events = new JwtBearerEvents
         {
             OnMessageReceived = context =>

@@ -9,7 +9,7 @@ builder.Services.AddServiceDatabase(builder.Configuration);
 builder.Services.AddSingleton<TenantMigrator>();
 builder.Services.AddSingleton<TenantRepository>();
 builder.Services.AddSingleton<TenantService>();
-builder.Services.AddSingleton<JwtTokenService>();
+builder.Services.AddJwtTokenService(builder.Configuration);
 
 var app = builder.Build();
 await app.Services.GetRequiredService<TenantMigrator>().MigrateAsync(CancellationToken.None);
