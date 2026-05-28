@@ -2,6 +2,10 @@
 
 This document describes the current Alpha SCADA implementation after the microservices and Clean Architecture refactor. It is intended for engineers, solution architects, delivery leads, and operators who need to understand how the system is split, how data moves, and where to make code changes.
 
+Architecture decisions:
+
+- [ADR 002: Wolverine Messaging With MQTT And PostgreSQL](architecture-decisions/002-messaging.md)
+
 ## Purpose
 
 Alpha SCADA is a lightweight open-source SCADA platform for small industrial energy sites. The current implementation focuses on:
