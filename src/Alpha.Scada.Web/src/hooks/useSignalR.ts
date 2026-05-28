@@ -9,6 +9,7 @@ type UseSignalRArgs = {
   loadUnit: (unitId: string) => Promise<void>;
   loadAlarms: () => Promise<void>;
   loadSitesAndUnits: () => Promise<void>;
+  onReportCompleted: () => Promise<void>;
 };
 
 export default function useSignalR({
@@ -17,7 +18,8 @@ export default function useSignalR({
   setStatus,
   loadUnit,
   loadAlarms,
-  loadSitesAndUnits
+  loadSitesAndUnits,
+  onReportCompleted
 }: UseSignalRArgs) {
   useEffect(() => {
     if (!token) return;
@@ -35,6 +37,7 @@ export default function useSignalR({
     });
     connection.on("alarmsChanged", loadAlarms);
     connection.on("unitStatusChanged", loadSitesAndUnits);
+    connection.on("reportCompleted", onReportCompleted);
 
     connection.start()
       .then(() => setStatus("Live"))

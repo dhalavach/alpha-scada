@@ -16,6 +16,7 @@ type OverviewScreenProps = {
   loadAlarms: () => Promise<void>;
   ackAlarm: (alarmId: string) => Promise<void>;
   runReport: () => Promise<void>;
+  reportRunning: boolean;
 };
 
 export default function OverviewScreen({
@@ -27,7 +28,8 @@ export default function OverviewScreen({
   loadUnit,
   loadAlarms,
   ackAlarm,
-  runReport
+  runReport,
+  reportRunning
 }: OverviewScreenProps) {
   return (
     <>
@@ -61,7 +63,7 @@ export default function OverviewScreen({
 
         <AlarmPreview alarms={alarms} loadAlarms={loadAlarms} ackAlarm={ackAlarm} />
         <TagMatrix groupedTags={groupedTags} />
-        <ReportPreview reports={reports} runReport={runReport} />
+        <ReportPreview reports={reports} runReport={runReport} reportRunning={reportRunning} />
       </section>
     </>
   );

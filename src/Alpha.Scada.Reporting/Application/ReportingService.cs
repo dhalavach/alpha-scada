@@ -15,22 +15,36 @@ public sealed class ReportingService(
         var asset = httpClientFactory.CreateClient("asset");
         var unitRequest = new HttpRequestMessage(HttpMethod.Get, $"/internal/v1/units/{request.UnitId}");
         unitRequest.ForwardAuthorization(authorizationHeader);
-        var unit = await (await asset.SendAsync(unitRequest, cancellationToken)).Content.ReadFromJsonAsync<UnitDto>(cancellationToken)
+        var unitResponse = await asset.SendAsync(unitRequest, cancellationToken);
+        if (!unitResponse.IsSuccessStatusCode)
+        {
+            throw new InvalidOperationException("Unit not found or not visible to the current user.");
+        }
+
+        var unit = await unitResponse.Content.ReadFromJsonAsync<UnitDto>(cancellationToken)
             ?? throw new InvalidOperationException("Unit not found.");
 
+        return await GenerateMonthlyAsync(unit.TenantId, request.UnitId, period, cancellationToken);
+    }
+
+    public Task<MonthlyReportDto> RunQueuedMonthlyAsync(Guid tenantId, Guid unitId, string period, CancellationToken cancellationToken) =>
+        GenerateMonthlyAsync(tenantId, unitId, period, cancellationToken);
+
+    private async Task<MonthlyReportDto> GenerateMonthlyAsync(Guid tenantId, Guid unitId, string period, CancellationToken cancellationToken)
+    {
         var telemetry = httpClientFactory.CreateClient("telemetry");
         var aggregate = await telemetry.GetFromJsonAsync<ReportAggregateDto>(
-            $"/internal/v1/telemetry/units/{request.UnitId}/report-aggregate?period={period}",
+            $"/internal/v1/telemetry/units/{unitId}/report-aggregate?period={period}",
             cancellationToken) ?? new ReportAggregateDto(0, 0, 0, 0);
 
         var alarm = httpClientFactory.CreateClient("alarm");
-        var alarmCount = await alarm.GetFromJsonAsync<int>($"/internal/v1/alarms/count?unitId={request.UnitId}&period={period}", cancellationToken);
+        var alarmCount = await alarm.GetFromJsonAsync<int>($"/internal/v1/alarms/count?unitId={unitId}&period={period}", cancellationToken);
         var availability = alarmCount > 0 ? 98.5 : 99.5;
 
         var report = new MonthlyReportDto(
             Guid.Empty,
-            unit.TenantId,
-            unit.Id,
+            tenantId,
+            unitId,
             period,
             aggregate.ElectricalKwh,
             aggregate.ThermalKwh,

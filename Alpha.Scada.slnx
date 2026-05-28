@@ -6,6 +6,7 @@
     <Project Path="src/Alpha.Scada.Edge/Alpha.Scada.Edge.csproj" />
     <Project Path="src/Alpha.Scada.Gateway/Alpha.Scada.Gateway.csproj" />
     <Project Path="src/Alpha.Scada.Identity/Alpha.Scada.Identity.csproj" />
+    <Project Path="src/Alpha.Scada.Reporting.Contracts/Alpha.Scada.Reporting.Contracts.csproj" />
     <Project Path="src/Alpha.Scada.Reporting/Alpha.Scada.Reporting.csproj" />
     <Project Path="src/Alpha.Scada.ServiceDefaults/Alpha.Scada.ServiceDefaults.csproj" />
     <Project Path="src/Alpha.Scada.TagCatalog/Alpha.Scada.TagCatalog.csproj" />

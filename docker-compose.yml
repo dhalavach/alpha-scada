@@ -9,6 +9,11 @@ services:
     environment:
       ASPNETCORE_URLS: http://+:8080
       Jwt__Secret: ${JWT_SECRET:?JWT_SECRET must be set in .env}
+      ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=alpha_reporting;Username=alpha;Password=alpha
+      Mqtt__Host: mosquitto
+      Mqtt__Port: "1883"
+      Mqtt__User: ${MQTT_USER_GATEWAY:?MQTT_USER_GATEWAY must be set in .env}
+      Mqtt__Password: ${MQTT_PASSWORD_GATEWAY:?MQTT_PASSWORD_GATEWAY must be set in .env}
       ServiceAuth__Token: ${SERVICE_AUTH_TOKEN:?SERVICE_AUTH_TOKEN must be set in .env}
       Services__Identity: http://identity:8080
       Services__Tenant: http://tenant:8080
@@ -137,6 +142,7 @@ services:
     environment:
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=alpha_reporting;Username=alpha;Password=alpha
+      Mqtt__Enabled: "false"
       Jwt__Secret: ${JWT_SECRET:?JWT_SECRET must be set in .env}
       Services__Asset: http://asset:8080
       Services__Telemetry: http://telemetry:8080

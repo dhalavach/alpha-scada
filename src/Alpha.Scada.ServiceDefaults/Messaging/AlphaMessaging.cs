@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Reflection;
 using JasperFx;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -41,6 +42,13 @@ public static class AlphaMessaging
         var transportSchema = configuration.GetValue("Wolverine:TransportSchema", "wolverine_queues");
 
         options.ServiceName = serviceName;
+        var entryAssembly = Assembly.GetEntryAssembly();
+        if (entryAssembly is not null)
+        {
+            options.ApplicationAssembly = entryAssembly;
+            options.Discovery.IncludeAssembly(entryAssembly);
+        }
+
         options.AutoBuildMessageStorageOnStartup = AutoCreate.CreateOrUpdate;
         options.UseSystemTextJsonForSerialization(json =>
         {
@@ -54,7 +62,10 @@ public static class AlphaMessaging
 
         options.PersistMessagesWithPostgresql(postgres, storageSchema)
             .EnableMessageTransport(postgresql => postgresql.TransportSchemaName(transportSchema));
-        ConfigureMqtt(options, configuration, serviceName);
+        if (configuration.GetValue("Mqtt:Enabled", true))
+        {
+            ConfigureMqtt(options, configuration, serviceName);
+        }
 
         options.Policies.AutoApplyTransactions();
         options.Policies.UseDurableInboxOnAllListeners();

@@ -27,6 +27,7 @@ export default function App() {
   const [tags, setTags] = useState<Tag[]>([]);
   const [alarms, setAlarms] = useState<Alarm[]>([]);
   const [reports, setReports] = useState<Report[]>([]);
+  const [reportRunning, setReportRunning] = useState(false);
   const [status, setStatus] = useState("Disconnected");
   const [tagSearch, setTagSearch] = useState("");
   const [subsystemFilter, setSubsystemFilter] = useState("all");
@@ -67,7 +68,8 @@ export default function App() {
     setStatus,
     loadUnit,
     loadAlarms,
-    loadSitesAndUnits
+    loadSitesAndUnits,
+    onReportCompleted
   });
 
   useEffect(() => {
@@ -189,11 +191,23 @@ export default function App() {
 
   async function runReport() {
     if (!selectedUnitId) return;
-    await fetch(`${apiBase}/api/reports/monthly/run`, {
-      method: "POST",
-      headers: { ...authHeaders(token), "Content-Type": "application/json" },
-      body: JSON.stringify({ unitId: selectedUnitId })
-    });
+    setReportRunning(true);
+    try {
+      const response = await fetch(`${apiBase}/api/reports/monthly/run`, {
+        method: "POST",
+        headers: { ...authHeaders(token), "Content-Type": "application/json" },
+        body: JSON.stringify({ unitId: selectedUnitId })
+      });
+      if (!response.ok) {
+        setReportRunning(false);
+      }
+    } catch {
+      setReportRunning(false);
+    }
+  }
+
+  async function onReportCompleted() {
+    setReportRunning(false);
     await loadReports();
   }
 
@@ -288,6 +302,7 @@ export default function App() {
             loadAlarms={loadAlarms}
             ackAlarm={ackAlarm}
             runReport={runReport}
+            reportRunning={reportRunning}
           />
         )}
 
@@ -322,7 +337,7 @@ export default function App() {
         )}
 
         {activeScreen === "Reports" && (
-          <ReportsScreen reports={reports} units={units} runReport={runReport} loadReports={loadReports} />
+          <ReportsScreen reports={reports} units={units} runReport={runReport} loadReports={loadReports} reportRunning={reportRunning} />
         )}
 
         {activeScreen === "Admin" && (

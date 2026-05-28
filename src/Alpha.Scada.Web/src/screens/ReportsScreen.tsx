@@ -7,9 +7,10 @@ type ReportsScreenProps = {
   units: Unit[];
   runReport: () => Promise<void>;
   loadReports: () => Promise<void>;
+  reportRunning: boolean;
 };
 
-export default function ReportsScreen({ reports, units, runReport, loadReports }: ReportsScreenProps) {
+export default function ReportsScreen({ reports, units, runReport, loadReports, reportRunning }: ReportsScreenProps) {
   return (
     <section className="screenStack">
       <section className="panel">
@@ -20,7 +21,9 @@ export default function ReportsScreen({ reports, units, runReport, loadReports }
           </div>
           <div className="filterRow">
             <button className="iconButton" onClick={loadReports}>Refresh</button>
-            <button className="primaryButton" onClick={runReport}>Run Report</button>
+            <button className="primaryButton" onClick={runReport} disabled={reportRunning}>
+              {reportRunning ? "Generating..." : "Run Report"}
+            </button>
           </div>
         </div>
         <div className="reportGrid">

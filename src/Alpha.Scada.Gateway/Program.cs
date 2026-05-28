@@ -2,11 +2,15 @@ using System.Net.Http.Json;
 using Alpha.Scada.Contracts;
 using Alpha.Scada.Gateway.Application;
 using Alpha.Scada.Gateway.Realtime;
+using Alpha.Scada.Reporting.Contracts;
 using Alpha.Scada.ServiceDefaults;
+using Alpha.Scada.ServiceDefaults.Messaging;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.SignalR;
 using System.Security.Cryptography;
 using System.Text;
+using Wolverine;
+using Wolverine.Postgresql;
 
 const string serviceName = "alpha-scada-gateway";
 
@@ -49,6 +53,11 @@ builder.Services.AddHttpClient("tagCatalog", client => client.BaseAddress = new 
 builder.Services.AddHttpClient("telemetry", client => client.BaseAddress = new Uri(builder.Configuration["Services:Telemetry"] ?? "http://localhost:5214"));
 builder.Services.AddHttpClient("alarm", client => client.BaseAddress = new Uri(builder.Configuration["Services:Alarm"] ?? "http://localhost:5215"));
 builder.Services.AddHttpClient("reporting", client => client.BaseAddress = new Uri(builder.Configuration["Services:Reporting"] ?? "http://localhost:5216"));
+builder.Host.UseAlphaMessaging("gateway", options =>
+{
+    options.PublishMessage<ReportRequested>().ToPostgresqlQueue("reports_requested");
+    options.ListenToPostgresqlQueue("reports_completed");
+});
 
 var app = builder.Build();
 app.UseCors();
@@ -179,18 +188,35 @@ app.MapGet("/api/reports/monthly", async (HttpContext context, JwtTokenService t
     return await ForwardGetAsync<IReadOnlyCollection<MonthlyReportDto>>(factory.CreateClient("reporting"), "/internal/v1/reports/monthly", context, context.RequestAborted);
 });
 
-app.MapPost("/api/reports/monthly/run", async (ReportRunRequest request, HttpContext context, JwtTokenService tokens, IHttpClientFactory factory) =>
+app.MapPost("/api/reports/monthly/run", async (ReportRunRequest request, HttpContext context, JwtTokenService tokens, IHttpClientFactory factory, IMessageBus bus) =>
 {
     var user = GatewayAuth.Authenticate(context, tokens);
     if (user is null) return Results.Unauthorized();
-    var downstream = new HttpRequestMessage(HttpMethod.Post, "/internal/v1/reports/monthly/run")
+    var unitRequest = new HttpRequestMessage(HttpMethod.Get, $"/internal/v1/units/{request.UnitId}").WithBearerToken(context);
+    var unitResponse = await factory.CreateClient("asset").SendAsync(unitRequest, context.RequestAborted);
+    if (!unitResponse.IsSuccessStatusCode)
     {
-        Content = JsonContent.Create(request)
-    }.WithBearerToken(context);
-    var response = await factory.CreateClient("reporting").SendAsync(downstream, context.RequestAborted);
-    return response.IsSuccessStatusCode
-        ? Results.Ok(await response.Content.ReadFromJsonAsync<MonthlyReportDto>(context.RequestAborted))
-        : Results.StatusCode((int)response.StatusCode);
+        return Results.StatusCode((int)unitResponse.StatusCode);
+    }
+
+    var unit = await unitResponse.Content.ReadFromJsonAsync<UnitDto>(context.RequestAborted);
+    if (unit is null)
+    {
+        return Results.StatusCode(502);
+    }
+
+    var jobId = Guid.NewGuid();
+    var period = string.IsNullOrWhiteSpace(request.Period) ? DateTimeOffset.UtcNow.ToString("yyyy-MM") : request.Period;
+    await bus.PublishAsync(new ReportRequested(
+        jobId,
+        unit.TenantId,
+        unit.Id,
+        period,
+        user.UserId,
+        DateTimeOffset.UtcNow,
+        ServiceIdentity.CurrentCorrelationId()));
+
+    return Results.Accepted($"/api/reports/monthly?jobId={jobId}", new { jobId, status = "queued" });
 });
 
 app.MapPost("/internal/v1/realtime/telemetry-updated", async (RealtimeNotificationRequest request, HttpContext context, IConfiguration configuration, IHubContext<TelemetryHub> hub, CancellationToken cancellationToken) =>

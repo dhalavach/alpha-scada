@@ -4,9 +4,10 @@ import { format } from "../lib/format";
 type ReportPreviewProps = {
   reports: Report[];
   runReport: () => Promise<void>;
+  reportRunning: boolean;
 };
 
-export default function ReportPreview({ reports, runReport }: ReportPreviewProps) {
+export default function ReportPreview({ reports, runReport, reportRunning }: ReportPreviewProps) {
   return (
     <section className="panel reportPanel">
       <div className="panelHeader">
@@ -14,7 +15,9 @@ export default function ReportPreview({ reports, runReport }: ReportPreviewProps
           <p className="eyebrow">Output</p>
           <h2>Monthly Reports</h2>
         </div>
-        <button className="primaryButton" onClick={runReport}>Run Report</button>
+        <button className="primaryButton" onClick={runReport} disabled={reportRunning}>
+          {reportRunning ? "Generating..." : "Run Report"}
+        </button>
       </div>
       {reports.length === 0 ? <p className="empty">No report runs yet</p> : reports.slice(0, 3).map(report => (
         <article className="report" key={report.id}>
