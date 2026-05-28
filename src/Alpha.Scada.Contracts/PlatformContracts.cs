@@ -99,6 +99,8 @@ public sealed record EdgeStatusEnvelope(string SchemaVersion, string UnitKey, st
 
 public sealed record ResolvedUnitDto(Guid TenantId, Guid SiteId, Guid UnitId, string UnitName, string UnitStatus);
 
+public sealed record UnitRouteDto(Guid TenantId, Guid SiteId, Guid UnitId, string SiteKey, string UnitKey, string UnitName);
+
 public sealed record ResolveTagsRequest(Guid TenantId, Guid UnitId, IReadOnlyCollection<string> TagKeys);
 
 public sealed record ResolvedTelemetrySample(

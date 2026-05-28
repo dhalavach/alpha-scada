@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/Alpha.Scada.Alarm.Contracts/Alpha.Scada.Alarm.Contracts.csproj" />
     <Project Path="src/Alpha.Scada.Alarm/Alpha.Scada.Alarm.csproj" />
     <Project Path="src/Alpha.Scada.Asset/Alpha.Scada.Asset.csproj" />
     <Project Path="src/Alpha.Scada.Contracts/Alpha.Scada.Contracts.csproj" />

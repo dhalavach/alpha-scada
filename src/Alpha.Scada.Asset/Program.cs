@@ -44,6 +44,12 @@ app.MapGet("/internal/v1/units/resolve", async (Guid tenantId, string siteKey, s
     return unit is null ? Results.NotFound() : Results.Ok(unit);
 });
 
+app.MapGet("/internal/v1/units/{unitId:guid}/route", async (Guid unitId, AssetService service, CancellationToken cancellationToken) =>
+{
+    var unit = await service.GetUnitRouteAsync(unitId, cancellationToken);
+    return unit is null ? Results.NotFound() : Results.Ok(unit);
+});
+
 app.MapPost("/internal/v1/units/{unitId:guid}/online", async (Guid unitId, AssetService service, CancellationToken cancellationToken) =>
 {
     await service.SetUnitOnlineAsync(unitId, cancellationToken);

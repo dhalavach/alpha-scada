@@ -80,7 +80,6 @@ public sealed class EdgeTelemetryPipeline(
         var serviceToken = configuration["ServiceAuth:Token"];
         var notification = new RealtimeNotificationRequest(tenant.Id, resolvedUnit.UnitId);
         await gateway.PostRealtimeAsync("/internal/v1/realtime/telemetry-updated", notification, serviceToken, cancellationToken);
-        await gateway.PostRealtimeAsync("/internal/v1/realtime/alarms-changed", notification, serviceToken, cancellationToken);
         await gateway.PostRealtimeAsync("/internal/v1/realtime/unit-status-changed", notification, serviceToken, cancellationToken);
     }
 }

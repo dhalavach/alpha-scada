@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using Alpha.Scada.Alarm.Contracts;
 using Alpha.Scada.Contracts;
 using Alpha.Scada.Gateway.Application;
 using Alpha.Scada.Gateway.Realtime;
@@ -10,6 +11,7 @@ using Microsoft.AspNetCore.SignalR;
 using System.Security.Cryptography;
 using System.Text;
 using Wolverine;
+using Wolverine.MQTT;
 using Wolverine.Postgresql;
 
 const string serviceName = "alpha-scada-gateway";
@@ -57,6 +59,7 @@ builder.Host.UseAlphaMessaging("gateway", options =>
 {
     options.PublishMessage<ReportRequested>().ToPostgresqlQueue("reports_requested");
     options.ListenToPostgresqlQueue("reports_completed");
+    options.ListenToMqttTopic(Topics.AlarmWildcard);
 });
 
 var app = builder.Build();

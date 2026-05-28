@@ -1,7 +1,10 @@
+using Alpha.Scada.Alarm.Contracts;
 using Alpha.Scada.Alarm.Application;
 using Alpha.Scada.Alarm.Infrastructure;
 using Alpha.Scada.Contracts;
 using Alpha.Scada.ServiceDefaults;
+using Alpha.Scada.ServiceDefaults.Messaging;
+using Wolverine.MQTT;
 
 const string serviceName = "alpha-scada-alarm";
 
@@ -10,7 +13,17 @@ builder.Services.AddServiceDatabase(builder.Configuration);
 builder.Services.AddSingleton<AlarmMigrator>();
 builder.Services.AddSingleton<AlarmRepository>();
 builder.Services.AddSingleton<AlarmService>();
+builder.Services.AddSingleton<UnitKeyResolver>();
+builder.Services.AddMemoryCache();
+builder.Services.AddHttpClient("asset", client => client.BaseAddress = new Uri(builder.Configuration["Services:Asset"] ?? "http://localhost:5212"));
+builder.Services.AddHttpClient("tenant", client => client.BaseAddress = new Uri(builder.Configuration["Services:Tenant"] ?? "http://localhost:5211"));
 builder.Services.AddJwtTokenService(builder.Configuration);
+builder.Host.UseAlphaMessaging("alarm", options =>
+{
+    options.PublishMessagesToMqttTopic<AlarmRaised>(message => Topics.AlarmRaised(message.TenantKey, message.SiteKey, message.UnitKey));
+    options.PublishMessagesToMqttTopic<AlarmCleared>(message => Topics.AlarmCleared(message.TenantKey, message.SiteKey, message.UnitKey));
+    options.PublishMessagesToMqttTopic<AlarmAcknowledged>(message => Topics.AlarmAcknowledged(message.TenantKey, message.SiteKey, message.UnitKey));
+});
 
 var app = builder.Build();
 await app.Services.GetRequiredService<AlarmMigrator>().MigrateAsync(CancellationToken.None);

@@ -10,4 +10,7 @@ public sealed class TenantService(TenantRepository repository)
 
     public Task<TenantDto?> ResolveAsync(string tenantKey, CancellationToken cancellationToken) =>
         repository.ResolveAsync(tenantKey, cancellationToken);
+
+    public Task<TenantDto?> GetByIdAsync(Guid tenantId, CancellationToken cancellationToken) =>
+        repository.GetByIdAsync(tenantId, cancellationToken);
 }

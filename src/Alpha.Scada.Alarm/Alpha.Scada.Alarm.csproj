@@ -11,6 +11,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Alpha.Scada.Alarm.Contracts\Alpha.Scada.Alarm.Contracts.csproj" />
     <ProjectReference Include="..\Alpha.Scada.Contracts\Alpha.Scada.Contracts.csproj" />
     <ProjectReference Include="..\Alpha.Scada.ServiceDefaults\Alpha.Scada.ServiceDefaults.csproj" />
   </ItemGroup>

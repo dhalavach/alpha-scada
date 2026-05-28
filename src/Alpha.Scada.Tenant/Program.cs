@@ -36,4 +36,10 @@ app.MapGet("/internal/v1/tenants/resolve/{tenantKey}", async (string tenantKey, 
     return tenant is null ? Results.NotFound() : Results.Ok(tenant);
 });
 
+app.MapGet("/internal/v1/tenants/{tenantId:guid}", async (Guid tenantId, TenantService service, CancellationToken cancellationToken) =>
+{
+    var tenant = await service.GetByIdAsync(tenantId, cancellationToken);
+    return tenant is null ? Results.NotFound() : Results.Ok(tenant);
+});
+
 app.Run();

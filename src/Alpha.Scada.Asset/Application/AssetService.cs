@@ -17,6 +17,9 @@ public sealed class AssetService(AssetRepository repository)
     public Task<ResolvedUnitDto?> ResolveUnitAsync(Guid tenantId, string siteKey, string unitKey, CancellationToken cancellationToken) =>
         repository.ResolveUnitAsync(tenantId, siteKey, unitKey, cancellationToken);
 
+    public Task<UnitRouteDto?> GetUnitRouteAsync(Guid unitId, CancellationToken cancellationToken) =>
+        repository.GetUnitRouteAsync(unitId, cancellationToken);
+
     public Task SetUnitOnlineAsync(Guid unitId, CancellationToken cancellationToken) =>
         repository.SetUnitOnlineAsync(unitId, cancellationToken);
 

@@ -33,6 +33,18 @@ public sealed class TenantRepository(NpgsqlDataSource dataSource)
         return (await ReadTenantsAsync(command, cancellationToken)).FirstOrDefault();
     }
 
+    public async Task<TenantDto?> GetByIdAsync(Guid tenantId, CancellationToken cancellationToken)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("""
+            select id, key, name, region
+            from tenants
+            where id = @tenant_id
+            """, connection);
+        command.Parameters.AddWithValue("tenant_id", tenantId);
+        return (await ReadTenantsAsync(command, cancellationToken)).FirstOrDefault();
+    }
+
     private static async Task<IReadOnlyCollection<TenantDto>> ReadTenantsAsync(NpgsqlCommand command, CancellationToken cancellationToken)
     {
         var results = new List<TenantDto>();

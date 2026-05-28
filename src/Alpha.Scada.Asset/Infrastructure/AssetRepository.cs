@@ -73,6 +73,22 @@ public sealed class AssetRepository(NpgsqlDataSource dataSource)
             : null;
     }
 
+    public async Task<UnitRouteDto?> GetUnitRouteAsync(Guid unitId, CancellationToken cancellationToken)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("""
+            select u.tenant_id, s.id, u.id, s.key, u.key, u.name
+            from units u
+            join sites s on s.id = u.site_id
+            where u.id = @unit_id
+            """, connection);
+        command.Parameters.AddWithValue("unit_id", unitId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken)
+            ? new UnitRouteDto(reader.GetGuid(0), reader.GetGuid(1), reader.GetGuid(2), reader.GetString(3), reader.GetString(4), reader.GetString(5))
+            : null;
+    }
+
     public async Task SetUnitOnlineAsync(Guid unitId, CancellationToken cancellationToken)
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
