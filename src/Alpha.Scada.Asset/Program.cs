@@ -3,6 +3,7 @@ using Alpha.Scada.Asset.Application;
 using Alpha.Scada.Asset.Infrastructure;
 using Alpha.Scada.ServiceDefaults;
 using Alpha.Scada.ServiceDefaults.Messaging;
+using Alpha.Scada.Telemetry.Contracts;
 using Wolverine.MQTT;
 
 const string serviceName = "alpha-scada-asset";
@@ -19,6 +20,7 @@ builder.Services.AddJwtTokenService(builder.Configuration);
 builder.Host.UseAlphaMessaging("asset", options =>
 {
     options.PublishMessagesToMqttTopic<UnitStatusChanged>(message => Topics.Status(message.TenantKey, message.SiteKey, message.UnitKey));
+    options.ListenToMqttTopic(Topics.ShadowTelemetryStoredWildcard);
 });
 
 var app = builder.Build();

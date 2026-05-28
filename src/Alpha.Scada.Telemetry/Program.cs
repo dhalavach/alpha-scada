@@ -1,7 +1,12 @@
 using Alpha.Scada.Contracts;
+using Alpha.Scada.Contracts.Messaging;
 using Alpha.Scada.ServiceDefaults;
+using Alpha.Scada.ServiceDefaults.Messaging;
 using Alpha.Scada.Telemetry.Application;
+using Alpha.Scada.Telemetry.Application.Messaging;
+using Alpha.Scada.Telemetry.Contracts;
 using Alpha.Scada.Telemetry.Infrastructure;
+using Wolverine.MQTT;
 
 const string serviceName = "alpha-scada-telemetry";
 
@@ -10,7 +15,20 @@ builder.Services.AddServiceDatabase(builder.Configuration);
 builder.Services.AddSingleton<TelemetryMigrator>();
 builder.Services.AddSingleton<TelemetryRepository>();
 builder.Services.AddSingleton<TelemetryService>();
+builder.Services.AddSingleton<CatalogCache>();
+builder.Services.AddMemoryCache();
+builder.Services.AddHttpClient("tenant", client => client.BaseAddress = new Uri(builder.Configuration["Services:Tenant"] ?? "http://localhost:5211"));
+builder.Services.AddHttpClient("asset", client => client.BaseAddress = new Uri(builder.Configuration["Services:Asset"] ?? "http://localhost:5212"));
+builder.Services.AddHttpClient("tagCatalog", client => client.BaseAddress = new Uri(builder.Configuration["Services:TagCatalog"] ?? "http://localhost:5213"));
 builder.Services.AddJwtTokenService(builder.Configuration);
+builder.Host.UseAlphaMessaging("telemetry", options =>
+{
+    options.ListenToMqttTopic(Topics.TelemetryWildcard)
+        .UseInterop(new RawTelemetryEnvelopeMapper())
+        .DefaultIncomingMessage(typeof(TelemetryEnvelopeV1));
+    options.PublishMessagesToMqttTopic<TelemetryBatchStored>(message =>
+        Topics.ShadowTelemetryStored(message.TenantKey, message.SiteKey, message.UnitKey));
+});
 
 var app = builder.Build();
 await app.Services.GetRequiredService<TelemetryMigrator>().MigrateAsync(CancellationToken.None);

@@ -14,6 +14,7 @@
     <ProjectReference Include="..\Alpha.Scada.Asset.Contracts\Alpha.Scada.Asset.Contracts.csproj" />
     <ProjectReference Include="..\Alpha.Scada.Contracts\Alpha.Scada.Contracts.csproj" />
     <ProjectReference Include="..\Alpha.Scada.ServiceDefaults\Alpha.Scada.ServiceDefaults.csproj" />
+    <ProjectReference Include="..\Alpha.Scada.Telemetry.Contracts\Alpha.Scada.Telemetry.Contracts.csproj" />
   </ItemGroup>
 
 </Project>

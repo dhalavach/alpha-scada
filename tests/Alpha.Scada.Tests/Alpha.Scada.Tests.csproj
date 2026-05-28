@@ -8,6 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="coverlet.collector" Version="6.0.4" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="Testcontainers" Version="4.8.0" />
@@ -27,6 +28,8 @@
     <ProjectReference Include="..\..\src\Alpha.Scada.Edge\Alpha.Scada.Edge.csproj" />
     <ProjectReference Include="..\..\src\Alpha.Scada.Identity\Alpha.Scada.Identity.csproj" />
     <ProjectReference Include="..\..\src\Alpha.Scada.ServiceDefaults\Alpha.Scada.ServiceDefaults.csproj" />
+    <ProjectReference Include="..\..\src\Alpha.Scada.Telemetry.Contracts\Alpha.Scada.Telemetry.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Alpha.Scada.Telemetry\Alpha.Scada.Telemetry.csproj" />
   </ItemGroup>
 
 </Project>

@@ -7,16 +7,30 @@ public sealed class TelemetryRepository(NpgsqlDataSource dataSource)
 {
     public async Task IngestAsync(TelemetryIngestRequest request, CancellationToken cancellationToken)
     {
+        await IngestIntoAsync("telemetry_samples", "tag_current", request, cancellationToken);
+    }
+
+    public async Task IngestShadowAsync(TelemetryIngestRequest request, CancellationToken cancellationToken)
+    {
+        await IngestIntoAsync("telemetry_samples_shadow", "tag_current_shadow", request, cancellationToken);
+    }
+
+    private async Task IngestIntoAsync(
+        string samplesTable,
+        string currentTable,
+        TelemetryIngestRequest request,
+        CancellationToken cancellationToken)
+    {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var tx = await connection.BeginTransactionAsync(cancellationToken);
         foreach (var sample in request.Samples)
         {
-            await using var command = new NpgsqlCommand("""
-                insert into telemetry_samples (tenant_id, unit_id, tag_id, tag_key, timestamp_utc, value_double, quality, source_timestamp_utc, received_at_utc)
+            await using var command = new NpgsqlCommand($"""
+                insert into {samplesTable} (tenant_id, unit_id, tag_id, tag_key, timestamp_utc, value_double, quality, source_timestamp_utc, received_at_utc)
                 values (@tenant_id, @unit_id, @tag_id, @tag_key, @timestamp_utc, @value, @quality, @source_timestamp_utc, now())
                 on conflict (tag_id, timestamp_utc) do nothing;
 
-                insert into tag_current (tenant_id, unit_id, tag_id, tag_key, value_double, quality, timestamp_utc)
+                insert into {currentTable} (tenant_id, unit_id, tag_id, tag_key, value_double, quality, timestamp_utc)
                 values (@tenant_id, @unit_id, @tag_id, @tag_key, @value, @quality, @timestamp_utc)
                 on conflict (tag_id) do update
                 set value_double = excluded.value_double,

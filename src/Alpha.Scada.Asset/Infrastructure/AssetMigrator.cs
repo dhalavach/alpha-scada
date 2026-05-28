@@ -46,6 +46,16 @@ public sealed class AssetMigrator(NpgsqlDataSource dataSource, ILogger<AssetMigr
 
             create index if not exists ix_sites_tenant on sites(tenant_id);
             create index if not exists ix_units_tenant_site on units(tenant_id, site_id);
+
+            create table if not exists unit_last_seen_shadow (
+                tenant_id uuid not null,
+                unit_id uuid primary key,
+                tenant_key text not null,
+                site_key text not null,
+                unit_key text not null,
+                last_seen_utc timestamptz not null,
+                updated_at_utc timestamptz not null default now()
+            );
             """, connection);
         await command.ExecuteNonQueryAsync(cancellationToken);
         logger.LogInformation("Asset database is ready.");
