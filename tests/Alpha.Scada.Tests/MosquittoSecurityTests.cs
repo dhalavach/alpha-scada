@@ -3,6 +3,7 @@ using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Configurations;
 using DotNet.Testcontainers.Containers;
 using MQTTnet;
+using MQTTnet.Client;
 using MQTTnet.Protocol;
 using Xunit.Sdk;
 
@@ -67,7 +68,7 @@ public sealed class MosquittoSecurityTests
 
     private static async Task<bool> CanConnectAsync(string host, int port, string user, string password)
     {
-        var factory = new MqttClientFactory();
+        var factory = new MqttFactory();
         using var client = factory.CreateMqttClient();
         try
         {
@@ -82,7 +83,7 @@ public sealed class MosquittoSecurityTests
 
     private static async Task AssertIngestorCanReadTelemetryAsync(string host, int port)
     {
-        var factory = new MqttClientFactory();
+        var factory = new MqttFactory();
         using var reader = factory.CreateMqttClient();
         using var writer = factory.CreateMqttClient();
         var received = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -102,7 +103,7 @@ public sealed class MosquittoSecurityTests
 
     private static async Task AssertEdgeCannotReadTelemetryAsync(string host, int port)
     {
-        var factory = new MqttClientFactory();
+        var factory = new MqttFactory();
         using var reader = factory.CreateMqttClient();
         using var writer = factory.CreateMqttClient();
         var received = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);

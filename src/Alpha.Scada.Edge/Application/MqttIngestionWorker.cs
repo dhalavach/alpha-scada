@@ -3,6 +3,7 @@ using System.Text.Json;
 using Alpha.Scada.Contracts;
 using Alpha.Scada.Edge.Domain;
 using MQTTnet;
+using MQTTnet.Client;
 using MQTTnet.Protocol;
 
 namespace Alpha.Scada.Edge.Application;
@@ -20,7 +21,7 @@ public sealed class MqttIngestionWorker(
             return;
         }
 
-        var factory = new MqttClientFactory();
+        var factory = new MqttFactory();
         using var client = factory.CreateMqttClient();
         client.ApplicationMessageReceivedAsync += async args =>
         {
@@ -32,7 +33,10 @@ public sealed class MqttIngestionWorker(
                     return;
                 }
 
-                var payload = args.ApplicationMessage.Payload.ToArray();
+                var payloadSegment = args.ApplicationMessage.PayloadSegment;
+                var payload = payloadSegment.Array is null
+                    ? []
+                    : payloadSegment.Array.AsSpan(payloadSegment.Offset, payloadSegment.Count).ToArray();
                 var envelope = JsonSerializer.Deserialize<EdgeTelemetryEnvelope>(payload, new JsonSerializerOptions(JsonSerializerDefaults.Web));
                 if (envelope is not null)
                 {
