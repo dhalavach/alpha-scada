@@ -162,6 +162,8 @@ services:
       Mqtt__Enabled: "true"
       Mqtt__Host: mosquitto
       Mqtt__Port: "1883"
+      Mqtt__User: ${MQTT_USER_EDGE_INGESTOR:?MQTT_USER_EDGE_INGESTOR must be set in .env}
+      Mqtt__Password: ${MQTT_PASSWORD_EDGE_INGESTOR:?MQTT_PASSWORD_EDGE_INGESTOR must be set in .env}
       ServiceAuth__Token: ${SERVICE_AUTH_TOKEN:?SERVICE_AUTH_TOKEN must be set in .env}
       Simulator__Enabled: "true"
       Services__Tenant: http://tenant:8080
@@ -211,6 +213,9 @@ services:
       - alpha-internal
     volumes:
       - ./ops/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./ops/mosquitto/acl:/mosquitto/config/acl:ro
+      - ./ops/mosquitto/passwords:/mosquitto/config/passwords:ro
+      - alpha-mosquitto-data:/mosquitto/data
 
   prometheus:
     image: prom/prometheus:v2.55.1
@@ -233,6 +238,7 @@ services:
 volumes:
   alpha-postgres-data:
   alpha-grafana-data:
+  alpha-mosquitto-data:
 
 networks:
   alpha-internal:

@@ -10,3 +10,4 @@ dist/
 *.swp
 *.log
 .env
+ops/mosquitto/passwords

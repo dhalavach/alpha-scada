@@ -45,10 +45,18 @@ public sealed class MqttIngestionWorker(
             }
         };
 
-        var options = new MqttClientOptionsBuilder()
+        var optionsBuilder = new MqttClientOptionsBuilder()
             .WithClientId($"alpha-scada-edge-{Environment.MachineName}")
-            .WithTcpServer(configuration["Mqtt:Host"] ?? "localhost", configuration.GetValue("Mqtt:Port", 1883))
-            .Build();
+            .WithTcpServer(configuration["Mqtt:Host"] ?? "localhost", configuration.GetValue("Mqtt:Port", 1883));
+
+        var mqttUser = configuration["Mqtt:User"];
+        var mqttPassword = configuration["Mqtt:Password"];
+        if (!string.IsNullOrWhiteSpace(mqttUser))
+        {
+            optionsBuilder.WithCredentials(mqttUser, mqttPassword);
+        }
+
+        var options = optionsBuilder.Build();
 
         while (!stoppingToken.IsCancellationRequested)
         {

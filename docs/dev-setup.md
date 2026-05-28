@@ -11,7 +11,10 @@ It creates a gitignored `.env` file with:
 ```text
 JWT_SECRET
 SERVICE_AUTH_TOKEN
+MQTT_USER_* and MQTT_PASSWORD_*
 ```
+
+It also generates `ops/mosquitto/passwords`, which is required because the local Mosquitto broker runs with anonymous access disabled and ACLs enabled.
 
 The default Compose stack enables development demo users in the Identity service.
 
