@@ -1,9 +1,11 @@
 using Alpha.Scada.Contracts;
+using Alpha.Scada.Alarm.Contracts;
 using Alpha.Scada.Edge.Domain;
 using Alpha.Scada.Identity.Infrastructure;
 using Alpha.Scada.ServiceDefaults;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
+using System.Text.Json;
 
 namespace Alpha.Scada.Tests;
 
@@ -103,5 +105,30 @@ public sealed class ContractTests
         Assert.Equal(user.Email, currentUser.Email);
         Assert.Equal(user.DisplayName, currentUser.DisplayName);
         Assert.Equal(user.Role, currentUser.Role);
+    }
+
+    [Fact]
+    public void Alarm_raised_contract_roundtrips_with_web_json_defaults()
+    {
+        var message = new AlarmRaised(
+            Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+            Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
+            Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc"),
+            Guid.Parse("dddddddd-dddd-dddd-dddd-dddddddddddd"),
+            "demo-operator",
+            "demo-energy-site",
+            "chp-demo-001",
+            "High",
+            "Electrical output exceeded high threshold.",
+            DateTimeOffset.Parse("2026-05-28T10:00:00Z"));
+
+        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        var json = JsonSerializer.Serialize(message, options);
+        var roundTrip = JsonSerializer.Deserialize<AlarmRaised>(json, options);
+
+        Assert.Equal("1.0", AlarmRaised.SchemaVersion);
+        Assert.Contains("\"alarmId\"", json);
+        Assert.DoesNotContain("AlarmId", json);
+        Assert.Equal(message, roundTrip);
     }
 }
