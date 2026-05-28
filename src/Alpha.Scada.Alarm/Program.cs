@@ -23,6 +23,7 @@ builder.Host.UseAlphaMessaging("alarm", options =>
     options.PublishMessagesToMqttTopic<AlarmRaised>(message => Topics.AlarmRaised(message.TenantKey, message.SiteKey, message.UnitKey));
     options.PublishMessagesToMqttTopic<AlarmCleared>(message => Topics.AlarmCleared(message.TenantKey, message.SiteKey, message.UnitKey));
     options.PublishMessagesToMqttTopic<AlarmAcknowledged>(message => Topics.AlarmAcknowledged(message.TenantKey, message.SiteKey, message.UnitKey));
+    options.ListenToMqttTopic(Topics.StatusWildcard);
 });
 
 var app = builder.Build();

@@ -89,12 +89,17 @@ public sealed class AssetRepository(NpgsqlDataSource dataSource)
             : null;
     }
 
-    public async Task SetUnitOnlineAsync(Guid unitId, CancellationToken cancellationToken)
+    public async Task<UnitDto?> SetUnitOnlineAsync(Guid unitId, CancellationToken cancellationToken)
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        await using var command = new NpgsqlCommand("update units set status = 'online', last_seen_utc = now() where id = @unit_id", connection);
+        await using var command = new NpgsqlCommand("""
+            update units
+            set status = 'online', last_seen_utc = now()
+            where id = @unit_id
+            returning id, tenant_id, site_id, key, name, model, status, last_seen_utc
+            """, connection);
         command.Parameters.AddWithValue("unit_id", unitId);
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        return (await ReadUnitsAsync(command, cancellationToken)).FirstOrDefault();
     }
 
     public async Task<IReadOnlyCollection<UnitDto>> MarkStaleUnitsOfflineAsync(int minutes, CancellationToken cancellationToken)

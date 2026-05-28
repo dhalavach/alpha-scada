@@ -27,18 +27,7 @@ public sealed class CommunicationLossMonitorWorker(
                 var staleUnits = await asset.PostAsJsonAsync($"/internal/v1/units/offline-stale?minutes={staleMinutes}", new { }, stoppingToken);
                 staleUnits.EnsureSuccessStatusCode();
 
-                var units = await staleUnits.Content.ReadFromJsonAsync<IReadOnlyCollection<UnitDto>>(stoppingToken) ?? [];
-                foreach (var unit in units)
-                {
-                    await httpClientFactory.CreateClient("alarm")
-                        .PostAsJsonAsync("/internal/v1/alarms/communication-lost", unit, stoppingToken);
-
-                    var notification = new RealtimeNotificationRequest(unit.TenantId, unit.Id);
-                    var gateway = httpClientFactory.CreateClient("gateway");
-                    var serviceToken = configuration["ServiceAuth:Token"];
-                    await gateway.PostRealtimeAsync("/internal/v1/realtime/unit-status-changed", notification, serviceToken, stoppingToken);
-                    await gateway.PostRealtimeAsync("/internal/v1/realtime/alarms-changed", notification, serviceToken, stoppingToken);
-                }
+                _ = await staleUnits.Content.ReadFromJsonAsync<IReadOnlyCollection<UnitDto>>(stoppingToken) ?? [];
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {

@@ -79,10 +79,17 @@ services:
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=alpha_asset;Username=alpha;Password=alpha
       Jwt__Secret: ${JWT_SECRET:?JWT_SECRET must be set in .env}
+      Mqtt__Host: mosquitto
+      Mqtt__Port: "1883"
+      Mqtt__User: ${MQTT_USER_ASSET:?MQTT_USER_ASSET must be set in .env}
+      Mqtt__Password: ${MQTT_PASSWORD_ASSET:?MQTT_PASSWORD_ASSET must be set in .env}
+      Services__Tenant: http://tenant:8080
     networks:
       - alpha-internal
     depends_on:
       - postgres
+      - mosquitto
+      - tenant
 
   tag-catalog:
     build:

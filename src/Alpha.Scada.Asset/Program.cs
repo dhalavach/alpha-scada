@@ -1,6 +1,9 @@
+using Alpha.Scada.Asset.Contracts;
 using Alpha.Scada.Asset.Application;
 using Alpha.Scada.Asset.Infrastructure;
 using Alpha.Scada.ServiceDefaults;
+using Alpha.Scada.ServiceDefaults.Messaging;
+using Wolverine.MQTT;
 
 const string serviceName = "alpha-scada-asset";
 
@@ -9,7 +12,14 @@ builder.Services.AddServiceDatabase(builder.Configuration);
 builder.Services.AddSingleton<AssetMigrator>();
 builder.Services.AddSingleton<AssetRepository>();
 builder.Services.AddSingleton<AssetService>();
+builder.Services.AddSingleton<TenantKeyResolver>();
+builder.Services.AddMemoryCache();
+builder.Services.AddHttpClient("tenant", client => client.BaseAddress = new Uri(builder.Configuration["Services:Tenant"] ?? "http://localhost:5211"));
 builder.Services.AddJwtTokenService(builder.Configuration);
+builder.Host.UseAlphaMessaging("asset", options =>
+{
+    options.PublishMessagesToMqttTopic<UnitStatusChanged>(message => Topics.Status(message.TenantKey, message.SiteKey, message.UnitKey));
+});
 
 var app = builder.Build();
 await app.Services.GetRequiredService<AssetMigrator>().MigrateAsync(CancellationToken.None);

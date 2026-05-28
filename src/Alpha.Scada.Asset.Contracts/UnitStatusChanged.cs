@@ -7,6 +7,7 @@ public sealed record UnitStatusChanged(
     string TenantKey,
     string SiteKey,
     string UnitKey,
+    string UnitName,
     string Status,
     DateTimeOffset ChangedAtUtc,
     DateTimeOffset? LastSeenUtc)

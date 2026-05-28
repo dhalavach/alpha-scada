@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using Alpha.Scada.Alarm.Contracts;
+using Alpha.Scada.Asset.Contracts;
 using Alpha.Scada.Contracts;
 using Alpha.Scada.Gateway.Application;
 using Alpha.Scada.Gateway.Realtime;
@@ -60,6 +61,7 @@ builder.Host.UseAlphaMessaging("gateway", options =>
     options.PublishMessage<ReportRequested>().ToPostgresqlQueue("reports_requested");
     options.ListenToPostgresqlQueue("reports_completed");
     options.ListenToMqttTopic(Topics.AlarmWildcard);
+    options.ListenToMqttTopic(Topics.StatusWildcard);
 });
 
 var app = builder.Build();
