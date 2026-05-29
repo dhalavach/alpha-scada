@@ -307,10 +307,13 @@ services:
       - alpha-internal
     volumes:
       - ./ops/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./ops/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
 
   grafana:
     image: grafana/grafana:11.3.0
     profiles: ["ops"]
+    ports:
+      - "3000:3000"
     networks:
       - alpha-internal
     volumes:

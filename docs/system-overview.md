@@ -6,6 +6,10 @@ Architecture decisions:
 
 - [ADR 002: Wolverine Messaging With MQTT And PostgreSQL](architecture-decisions/002-messaging.md)
 
+Operations:
+
+- [Messaging runbook](messaging-runbook.md)
+
 ## Purpose
 
 Alpha SCADA is a lightweight open-source SCADA platform for small industrial energy sites. The current implementation focuses on:
@@ -20,7 +24,7 @@ The application is generic and uses "Combined Heat and Power Unit" as the demo a
 
 ## Current Architecture
 
-The backend is split into one public Gateway/BFF and eight domain services. The frontend only calls the Gateway. Domain services communicate over HTTP for v1. Each domain service owns its own PostgreSQL database.
+The backend is split into one public Gateway/BFF and eight domain services. The frontend only calls the Gateway. Domain services use HTTP for request/response queries and Wolverine-backed messaging for asynchronous commands/events. Each domain service owns its own PostgreSQL database.
 
 ```mermaid
 flowchart LR

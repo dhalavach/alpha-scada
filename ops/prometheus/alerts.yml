@@ -1,0 +1,38 @@
+groups:
+  - name: alpha-scada-messaging
+    rules:
+      - alert: AlphaScadaWolverineOutboxBacklog
+        expr: alpha_scada_wolverine_outbox_depth > 100
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Wolverine outbox backlog is growing"
+          description: "Service {{ $labels.service }} has {{ $value }} pending outgoing envelopes."
+
+      - alert: AlphaScadaWolverineErrorQueueNotEmpty
+        expr: alpha_scada_wolverine_error_queue_depth > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Wolverine error queue is not empty"
+          description: "Service {{ $labels.service }} has {{ $value }} dead-lettered messages."
+
+      - alert: AlphaScadaMqttDlqNotEmpty
+        expr: alpha_scada_mqtt_dlq_depth > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "MQTT DLQ is not empty"
+          description: "Service {{ $labels.service }} has {{ $value }} messages on its MQTT DLQ."
+
+      - alert: AlphaScadaMqttSubscribeLag
+        expr: alpha_scada_mqtt_subscribe_lag_seconds > 60
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "MQTT subscriber lag is high"
+          description: "Service {{ $labels.service }} has MQTT subscribe lag of {{ $value }} seconds."
