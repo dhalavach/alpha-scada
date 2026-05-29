@@ -15,6 +15,7 @@ builder.Services.AddSingleton<AssetRepository>();
 builder.Services.AddSingleton<AssetService>();
 builder.Services.AddSingleton<TenantKeyResolver>();
 builder.Services.AddMemoryCache();
+builder.Services.AddHostedService<CommunicationLossMonitorWorker>();
 builder.Services.AddHttpClient("tenant", client => client.BaseAddress = new Uri(builder.Configuration["Services:Tenant"] ?? "http://localhost:5211"));
 builder.Services.AddJwtTokenService(builder.Configuration);
 builder.Host.UseAlphaMessaging("asset", options =>

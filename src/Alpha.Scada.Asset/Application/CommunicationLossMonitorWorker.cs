@@ -1,11 +1,8 @@
-using System.Net.Http.Json;
-using Alpha.Scada.Contracts;
-
-namespace Alpha.Scada.Edge.Application;
+namespace Alpha.Scada.Asset.Application;
 
 public sealed class CommunicationLossMonitorWorker(
     IConfiguration configuration,
-    IHttpClientFactory httpClientFactory,
+    AssetService service,
     ILogger<CommunicationLossMonitorWorker> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -23,11 +20,11 @@ public sealed class CommunicationLossMonitorWorker(
         {
             try
             {
-                var asset = httpClientFactory.CreateClient("asset");
-                var staleUnits = await asset.PostAsJsonAsync($"/internal/v1/units/offline-stale?minutes={staleMinutes}", new { }, stoppingToken);
-                staleUnits.EnsureSuccessStatusCode();
-
-                _ = await staleUnits.Content.ReadFromJsonAsync<IReadOnlyCollection<UnitDto>>(stoppingToken) ?? [];
+                var offlineUnits = await service.MarkStaleUnitsOfflineAsync(staleMinutes, stoppingToken);
+                if (offlineUnits.Count > 0)
+                {
+                    logger.LogWarning("Marked {Count} stale units offline after {Minutes} minutes without telemetry.", offlineUnits.Count, staleMinutes);
+                }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {

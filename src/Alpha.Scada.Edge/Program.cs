@@ -10,7 +10,6 @@ builder.Services.AddSingleton<EdgeMigrator>();
 builder.Services.AddSingleton<EdgeTelemetryPipeline>();
 builder.Services.AddHostedService<MqttIngestionWorker>();
 builder.Services.AddHostedService<ChpUnitSimulatorWorker>();
-builder.Services.AddHostedService<CommunicationLossMonitorWorker>();
 builder.Services.AddHttpClient("tenant", client => client.BaseAddress = new Uri(builder.Configuration["Services:Tenant"] ?? "http://localhost:5211"));
 builder.Services.AddHttpClient("asset", client => client.BaseAddress = new Uri(builder.Configuration["Services:Asset"] ?? "http://localhost:5212"));
 builder.Services.AddHttpClient("tagCatalog", client => client.BaseAddress = new Uri(builder.Configuration["Services:TagCatalog"] ?? "http://localhost:5213"));

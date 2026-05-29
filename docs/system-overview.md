@@ -66,9 +66,9 @@ flowchart LR
 | Gateway | `src/Alpha.Scada.Gateway` | Public REST API compatibility, BFF orchestration, SignalR hub, JWT validation | `Program.cs`, `Application/GatewayAuth.cs`, `Realtime/TelemetryHub.cs` |
 | Identity | `src/Alpha.Scada.Identity` | Users, roles, password hashing, login/logout audit, JWT issuing | `Application/AuthService.cs`, `Infrastructure/IdentityRepository.cs`, `Infrastructure/PasswordHasher.cs` |
 | Tenant | `src/Alpha.Scada.Tenant` | Tenant records and support-user tenant visibility | `Application/TenantService.cs`, `Infrastructure/TenantRepository.cs` |
-| Asset | `src/Alpha.Scada.Asset` | Sites, units, unit status, unit key resolution, stale unit transitions | `Application/AssetService.cs`, `Infrastructure/AssetRepository.cs` |
+| Asset | `src/Alpha.Scada.Asset` | Sites, units, unit status, unit key resolution, stale unit transitions, communication-loss monitor | `Application/AssetService.cs`, `Application/CommunicationLossMonitorWorker.cs`, `Infrastructure/AssetRepository.cs` |
 | Tag Catalog | `src/Alpha.Scada.TagCatalog` | Subsystems, tag definitions, engineering units, threshold metadata | `Application/TagCatalogService.cs`, `Infrastructure/TagCatalogRepository.cs` |
-| Edge | `src/Alpha.Scada.Edge` | MQTT worker, topic validation, ingestion orchestration, simulator, communication-loss monitor | `Application/MqttIngestionWorker.cs`, `Application/EdgeTelemetryPipeline.cs`, `Application/CommunicationLossMonitorWorker.cs` |
+| Edge | `src/Alpha.Scada.Edge` | MQTT worker, topic validation, legacy ingest fan-out, simulator | `Application/MqttIngestionWorker.cs`, `Application/EdgeTelemetryPipeline.cs`, `Application/ChpUnitSimulatorWorker.cs` |
 | Telemetry | `src/Alpha.Scada.Telemetry` | Current tag values, partitioned telemetry history, report aggregates | `Application/TelemetryService.cs`, `Infrastructure/TelemetryRepository.cs` |
 | Alarm | `src/Alpha.Scada.Alarm` | Alarm evaluation, active/acknowledged/cleared lifecycle, alarm counts | `Domain/AlarmRule.cs`, `Application/AlarmService.cs`, `Infrastructure/AlarmRepository.cs` |
 | Reporting | `src/Alpha.Scada.Reporting` | Monthly report generation and report run persistence | `Application/ReportingService.cs`, `Infrastructure/ReportingRepository.cs` |
