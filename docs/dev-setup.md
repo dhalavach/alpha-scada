@@ -10,7 +10,6 @@ It creates a gitignored `.env` file with:
 
 ```text
 JWT_SECRET
-SERVICE_AUTH_TOKEN
 MQTT_USER_* and MQTT_PASSWORD_*
 ```
 

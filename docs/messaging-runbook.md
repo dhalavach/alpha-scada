@@ -105,51 +105,16 @@ docker compose exec -T postgres psql -U alpha -d alpha_reporting -c \
 
 If `reports_requested` grows, restart `reporting`. If `reports_completed` grows, restart `gateway`.
 
-## Roll Back To HTTP Telemetry Fan-Out
+## Roll Back Messaging Cleanup
 
-The soak-period fallback is still available while `Edge:LegacyHttpFanOut=true`.
-
-To force the legacy HTTP telemetry path during incident response, keep the
-services running and disable their MQTT consumers with a temporary Compose
-override:
-
-1. Confirm Edge still has legacy fan-out enabled:
+The legacy HTTP telemetry fan-out path has been removed. After this cleanup,
+rollback is a code rollback, not a runtime flag:
 
 ```bash
-docker compose exec edge printenv Edge__LegacyHttpFanOut
+git revert <cleanup-commit>
+docker compose up --build -d
 ```
 
-2. Add a temporary override file:
-
-```bash
-cat > docker-compose.mqtt-off.yml <<'YAML'
-services:
-  telemetry:
-    environment:
-      Mqtt__Enabled: "false"
-  asset:
-    environment:
-      Mqtt__Enabled: "false"
-  alarm:
-    environment:
-      Mqtt__Enabled: "false"
-  gateway:
-    environment:
-      Mqtt__Enabled: "false"
-YAML
-```
-
-3. Restart the affected services with the override:
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.mqtt-off.yml up -d telemetry asset alarm gateway edge
-```
-
-This preserves HTTP telemetry persistence and alarm evaluation through Edge's
-legacy fan-out. MQTT-backed alarm/status realtime broadcasts are unavailable
-while the override is active, so use the active alarms API/UI refresh as the
-operator truth during the rollback window.
-
-Remove `docker-compose.mqtt-off.yml` and restart the same services when MQTT is
-healthy again. This rollback is temporary and disappears when the legacy HTTP
-fan-out path is deleted.
+Use this only if the MQTT normalization path itself is defective. For broker or
+consumer outages, prefer the DLQ, outbox, and service-restart procedures above
+so telemetry is replayed through the durable inbox/outbox path.

@@ -132,8 +132,6 @@ public sealed record ReportAggregateDto(
     double RuntimeHours,
     double EstimatedWoodChipsKg);
 
-public sealed record RealtimeNotificationRequest(Guid TenantId, Guid? UnitId);
-
 public static class Roles
 {
     public const string Admin = "Admin";

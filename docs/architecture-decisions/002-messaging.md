@@ -12,7 +12,7 @@ We will not add a custom `Alpha.Scada.Messaging` abstraction above Wolverine. Ap
 
 ## Context
 
-The current system has multiple services communicating mostly through synchronous HTTP. Edge telemetry ingestion is especially coupled: Edge resolves tenant, asset, and tag metadata, writes telemetry, triggers alarm evaluation, updates status, and calls Gateway realtime callbacks.
+Before this migration, services communicated mostly through synchronous HTTP. Edge telemetry ingestion was especially coupled: Edge resolved tenant, asset, and tag metadata, wrote telemetry, triggered alarm evaluation, updated status, and called Gateway realtime callbacks.
 
 This creates brittle service orchestration and weak recovery semantics. We need durable asynchronous command/event flows without adding another broker container or adopting EF Core.
 

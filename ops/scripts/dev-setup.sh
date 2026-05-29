@@ -19,12 +19,9 @@ random_password() {
 }
 
 ensure_value "JWT_SECRET" "$(openssl rand -base64 48 | tr -d '\n')"
-ensure_value "SERVICE_AUTH_TOKEN" "$(openssl rand -hex 32)"
 
 ensure_value "MQTT_USER_EDGE" "edge"
 ensure_value "MQTT_PASSWORD_EDGE" "$(random_password)"
-ensure_value "MQTT_USER_EDGE_INGESTOR" "edge-ingestor"
-ensure_value "MQTT_PASSWORD_EDGE_INGESTOR" "$(random_password)"
 ensure_value "MQTT_USER_TELEMETRY" "telemetry"
 ensure_value "MQTT_PASSWORD_TELEMETRY" "$(random_password)"
 ensure_value "MQTT_USER_ALARM" "alarm"

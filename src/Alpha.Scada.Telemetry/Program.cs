@@ -37,12 +37,6 @@ app.MapGet("/health", () => Results.Ok(new { status = "ok", service = serviceNam
 app.MapGet("/ready", MinimalApi.ReadyAsync);
 app.MapGet("/metrics", () => MinimalApi.Metrics(serviceName));
 
-app.MapPost("/internal/v1/telemetry/ingest", async (TelemetryIngestRequest request, TelemetryService service, CancellationToken cancellationToken) =>
-{
-    await service.IngestAsync(request, cancellationToken);
-    return Results.NoContent();
-});
-
 app.MapGet("/internal/v1/telemetry/units/{unitId:guid}/current", async (Guid unitId, HttpContext context, JwtTokenService tokens, TelemetryService service) =>
 {
     var user = HttpUserContext.FromBearerToken(context.Request.Headers, tokens);

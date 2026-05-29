@@ -10,5 +10,4 @@ dist/
 *.swp
 *.log
 .env
-docker-compose.mqtt-off.yml
 ops/mosquitto/passwords

@@ -8,14 +8,13 @@ Current capabilities:
 
 - ASP.NET Core `.NET 10` Gateway/BFF plus eight Clean Architecture domain services.
 - Separate PostgreSQL databases for identity, tenant, asset, tag catalog, edge, telemetry, alarm, and reporting ownership.
-- HTTP-only internal service communication for v1.
-- Versioned Node-RED/MQTT telemetry contract through Mosquitto.
+- HTTP for request/response queries, plus Wolverine-backed MQTT/PostgreSQL messaging for asynchronous commands and events.
+- Versioned Node-RED/MQTT telemetry contract through Mosquitto, normalized by the Telemetry service.
 - Gateway-owned SignalR realtime hub at `/hubs/telemetry`.
-- Gateway realtime callbacks under `/internal/v1/realtime/*` require the shared Edge service token; they are not public browser APIs.
 - Local user login with PBKDF2 password hashing and fixed roles.
 - React/Vite frontend with login, site/unit navigation, Combined Heat and Power Unit overview, alarms, and monthly reports.
 - Optional Edge-hosted Combined Heat and Power Unit simulator for local development.
-- Edge-hosted communication-loss monitor that marks stale units offline and raises alarms.
+- Asset-hosted communication-loss monitor that marks stale units offline; Alarm raises communication-loss alarms from unit status events.
 - Docker Compose for local/dev and k3s manifests for production-like deployment.
 
 ## Service Layout
@@ -26,8 +25,8 @@ Alpha.Scada.Identity     Users, roles, login, JWT issuing
 Alpha.Scada.Tenant       Tenant records and support visibility
 Alpha.Scada.Asset        Sites, units, status, key resolution
 Alpha.Scada.TagCatalog   Subsystems, tag definitions, units, thresholds
-Alpha.Scada.Edge         MQTT worker, topic parsing, payload validation
-Alpha.Scada.Telemetry    Current values, history, aggregates
+Alpha.Scada.Edge         Optional simulator / adapter host
+Alpha.Scada.Telemetry    MQTT normalization, current values, history, aggregates
 Alpha.Scada.Alarm        Alarm evaluation, acknowledge, clear lifecycle
 Alpha.Scada.Reporting    Monthly report runs and orchestration
 ```
@@ -40,8 +39,8 @@ src/Alpha.Scada.Identity         Local auth, users, roles, JWT issuing
 src/Alpha.Scada.Tenant           Tenant lookup and tenant visibility
 src/Alpha.Scada.Asset            Sites, units, status, key resolution
 src/Alpha.Scada.TagCatalog       Tag definitions and alarm thresholds
-src/Alpha.Scada.Edge             MQTT ingestion, simulator, communication-loss monitor
-src/Alpha.Scada.Telemetry        Current values, history, aggregates
+src/Alpha.Scada.Edge             Optional simulator / adapter host
+src/Alpha.Scada.Telemetry        MQTT normalization, current values, history, aggregates
 src/Alpha.Scada.Alarm            Alarm rules and lifecycle
 src/Alpha.Scada.Reporting        Monthly report orchestration
 src/Alpha.Scada.Contracts        Shared DTOs and role rules
@@ -53,7 +52,7 @@ tests/                           xUnit contract and rule tests
 
 ## Run With Compose
 
-Create local development secrets first. The generated `.env` file is gitignored and provides `JWT_SECRET` for signed user tokens plus `SERVICE_AUTH_TOKEN` for Edge-to-Gateway realtime callbacks.
+Create local development secrets first. The generated `.env` file is gitignored and provides `JWT_SECRET` for signed user tokens plus Mosquitto credentials for the local services.
 
 ```bash
 ops/scripts/dev-setup.sh
@@ -86,7 +85,7 @@ Optional observability services:
 docker compose --profile ops up --build
 ```
 
-The observability profile also stays internal by default. Publish Grafana or Prometheus with a local override file when you need to inspect them from the host.
+Grafana is available at `http://localhost:3000` in the ops profile. Prometheus stays on the internal Compose network and is queried by Grafana.
 
 ## Run Backend And Frontend Separately
 

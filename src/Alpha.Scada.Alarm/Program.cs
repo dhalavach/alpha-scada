@@ -37,18 +37,6 @@ app.MapGet("/health", () => Results.Ok(new { status = "ok", service = serviceNam
 app.MapGet("/ready", MinimalApi.ReadyAsync);
 app.MapGet("/metrics", () => MinimalApi.Metrics(serviceName));
 
-app.MapPost("/internal/v1/alarms/evaluate", async (AlarmEvaluationRequest request, AlarmService service, CancellationToken cancellationToken) =>
-{
-    await service.EvaluateAsync(request, cancellationToken);
-    return Results.NoContent();
-});
-
-app.MapPost("/internal/v1/alarms/communication-lost", async (UnitDto unit, AlarmService service, CancellationToken cancellationToken) =>
-{
-    await service.RaiseCommunicationLostAsync(unit, cancellationToken);
-    return Results.NoContent();
-});
-
 app.MapGet("/internal/v1/alarms/active", async (HttpContext context, JwtTokenService tokens, AlarmService service) =>
 {
     var user = HttpUserContext.FromBearerToken(context.Request.Headers, tokens);

@@ -19,4 +19,3 @@ metadata:
 type: Opaque
 stringData:
   Jwt__Secret: replace-with-generated-jwt-secret
-  ServiceAuth__Token: replace-with-generated-service-token

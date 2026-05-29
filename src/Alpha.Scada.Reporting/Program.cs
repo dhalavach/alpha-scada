@@ -36,11 +36,4 @@ app.MapGet("/internal/v1/reports/monthly", async (HttpContext context, JwtTokenS
     return user is null ? Results.Unauthorized() : Results.Ok(await repository.GetMonthlyReportsAsync(user, context.RequestAborted));
 });
 
-app.MapPost("/internal/v1/reports/monthly/run", async (ReportRunRequest request, HttpContext context, JwtTokenService tokens, ReportingService service) =>
-{
-    var user = HttpUserContext.FromBearerToken(context.Request.Headers, tokens);
-    if (user is null) return Results.Unauthorized();
-    return Results.Ok(await service.RunMonthlyAsync(request, user, context.Request.Headers.Authorization.ToString(), context.RequestAborted));
-});
-
 app.Run();

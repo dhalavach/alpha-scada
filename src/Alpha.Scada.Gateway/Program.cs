@@ -7,10 +7,8 @@ using Alpha.Scada.Gateway.Realtime;
 using Alpha.Scada.Reporting.Contracts;
 using Alpha.Scada.ServiceDefaults;
 using Alpha.Scada.ServiceDefaults.Messaging;
+using Alpha.Scada.Telemetry.Contracts;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.AspNetCore.SignalR;
-using System.Security.Cryptography;
-using System.Text;
 using Wolverine;
 using Wolverine.MQTT;
 using Wolverine.Postgresql;
@@ -62,6 +60,7 @@ builder.Host.UseAlphaMessaging("gateway", options =>
     options.ListenToPostgresqlQueue("reports_completed");
     options.ListenToMqttTopic(Topics.AlarmWildcard);
     options.ListenToMqttTopic(Topics.StatusWildcard);
+    options.ListenToMqttTopic(Topics.TelemetryStoredWildcard);
 });
 
 var app = builder.Build();
@@ -224,27 +223,6 @@ app.MapPost("/api/reports/monthly/run", async (ReportRunRequest request, HttpCon
     return Results.Accepted($"/api/reports/monthly?jobId={jobId}", new { jobId, status = "queued" });
 });
 
-app.MapPost("/internal/v1/realtime/telemetry-updated", async (RealtimeNotificationRequest request, HttpContext context, IConfiguration configuration, IHubContext<TelemetryHub> hub, CancellationToken cancellationToken) =>
-{
-    if (!HasServiceToken(context, configuration)) return Results.Unauthorized();
-    await hub.Clients.All.SendAsync("telemetryUpdated", request, cancellationToken);
-    return Results.NoContent();
-});
-
-app.MapPost("/internal/v1/realtime/alarms-changed", async (RealtimeNotificationRequest request, HttpContext context, IConfiguration configuration, IHubContext<TelemetryHub> hub, CancellationToken cancellationToken) =>
-{
-    if (!HasServiceToken(context, configuration)) return Results.Unauthorized();
-    await hub.Clients.All.SendAsync("alarmsChanged", request, cancellationToken);
-    return Results.NoContent();
-});
-
-app.MapPost("/internal/v1/realtime/unit-status-changed", async (RealtimeNotificationRequest request, HttpContext context, IConfiguration configuration, IHubContext<TelemetryHub> hub, CancellationToken cancellationToken) =>
-{
-    if (!HasServiceToken(context, configuration)) return Results.Unauthorized();
-    await hub.Clients.All.SendAsync("unitStatusChanged", request, cancellationToken);
-    return Results.NoContent();
-});
-
 app.MapHub<TelemetryHub>("/hubs/telemetry");
 
 app.Run();
@@ -256,19 +234,4 @@ static async Task<IResult> ForwardGetAsync<T>(HttpClient client, string path, Ht
     return response.IsSuccessStatusCode
         ? Results.Ok(await response.Content.ReadFromJsonAsync<T>(cancellationToken))
         : Results.StatusCode((int)response.StatusCode);
-}
-
-static bool HasServiceToken(HttpContext context, IConfiguration configuration)
-{
-    var expected = configuration["ServiceAuth:Token"];
-    var actual = context.Request.Headers["X-Service-Token"].ToString();
-    if (string.IsNullOrWhiteSpace(expected) || string.IsNullOrWhiteSpace(actual))
-    {
-        return false;
-    }
-
-    var expectedBytes = Encoding.UTF8.GetBytes(expected);
-    var actualBytes = Encoding.UTF8.GetBytes(actual);
-    return actualBytes.Length == expectedBytes.Length
-        && CryptographicOperations.FixedTimeEquals(actualBytes, expectedBytes);
 }

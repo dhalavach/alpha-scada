@@ -63,15 +63,6 @@ app.MapGet("/internal/v1/units/{unitId:guid}/route", async (Guid unitId, AssetSe
     return unit is null ? Results.NotFound() : Results.Ok(unit);
 });
 
-app.MapPost("/internal/v1/units/{unitId:guid}/online", async (Guid unitId, AssetService service, CancellationToken cancellationToken) =>
-{
-    await service.SetUnitOnlineAsync(unitId, cancellationToken);
-    return Results.NoContent();
-});
-
-app.MapPost("/internal/v1/units/offline-stale", async (int? minutes, AssetService service, CancellationToken cancellationToken) =>
-    Results.Ok(await service.MarkStaleUnitsOfflineAsync(minutes ?? 2, cancellationToken)));
-
 app.MapGet("/internal/v1/units/stale", async (int? minutes, AssetService service, CancellationToken cancellationToken) =>
     Results.Ok(await service.GetStaleUnitsAsync(minutes ?? 2, cancellationToken)));
 

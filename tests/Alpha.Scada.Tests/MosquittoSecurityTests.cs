@@ -34,7 +34,7 @@ public sealed class MosquittoSecurityTests
                 .WithPortBinding(1883, true)
                 .WithCommand("sh", "-c", string.Join(" && ", [
                     "mosquitto_passwd -b -c /tmp/passwords edge edge-pass",
-                    "mosquitto_passwd -b /tmp/passwords edge-ingestor ingest-pass",
+                    "mosquitto_passwd -b /tmp/passwords telemetry telemetry-pass",
                     "chmod 644 /tmp/passwords",
                     "mosquitto -c /mosquitto/config/mosquitto.conf"
                 ]))
@@ -56,7 +56,7 @@ public sealed class MosquittoSecurityTests
                 var port = container.GetMappedPublicPort(1883);
 
                 Assert.False(await CanConnectAsync(host, port, "wrong", "wrong"));
-                await AssertIngestorCanReadTelemetryAsync(host, port);
+                await AssertTelemetryCanReadTelemetryAsync(host, port);
                 await AssertEdgeCannotReadTelemetryAsync(host, port);
             }
         }
@@ -81,7 +81,7 @@ public sealed class MosquittoSecurityTests
         }
     }
 
-    private static async Task AssertIngestorCanReadTelemetryAsync(string host, int port)
+    private static async Task AssertTelemetryCanReadTelemetryAsync(string host, int port)
     {
         var factory = new MqttFactory();
         using var reader = factory.CreateMqttClient();
@@ -93,7 +93,7 @@ public sealed class MosquittoSecurityTests
             return Task.CompletedTask;
         };
 
-        await reader.ConnectAsync(Options(host, port, "edge-ingestor", "ingest-pass"));
+        await reader.ConnectAsync(Options(host, port, "telemetry", "telemetry-pass"));
         await reader.SubscribeAsync(Subscribe("alpha/+/+/+/telemetry"));
         await writer.ConnectAsync(Options(host, port, "edge", "edge-pass"));
         await writer.PublishAsync(Message("alpha/demo/site/unit/telemetry"));
