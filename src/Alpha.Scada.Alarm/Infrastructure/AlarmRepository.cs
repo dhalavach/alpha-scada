@@ -1,6 +1,7 @@
 using Alpha.Scada.Alarm.Domain;
 using Alpha.Scada.Contracts;
 using Npgsql;
+using NpgsqlTypes;
 
 namespace Alpha.Scada.Alarm.Infrastructure;
 
@@ -21,47 +22,69 @@ public sealed class AlarmRepository(NpgsqlDataSource dataSource)
         AlarmEvaluationRequest request,
         CancellationToken cancellationToken)
     {
-        var raised = new List<AlarmDto>();
-        var cleared = new List<AlarmDto>();
-        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        var alarmingTagIds = new List<Guid>();
+        var severities = new List<string>();
+        var messages = new List<string>();
+        var clearingTagIds = new List<Guid>();
+
         foreach (var sample in request.Samples)
         {
             var result = AlarmRule.Evaluate(sample);
             if (result.IsAlarm)
             {
-                await using var command = new NpgsqlCommand($"""
-                    insert into {tableName} (id, tenant_id, unit_id, tag_id, severity, message, state, raised_at_utc)
-                    select gen_random_uuid(), @tenant_id, @unit_id, @tag_id, @severity, @message, 'active', now()
-                    where not exists (
-                        select 1 from {tableName}
-                        where tag_id = @tag_id and state in ('active', 'acknowledged')
-                    )
-                    returning id, tenant_id, unit_id, tag_id, severity, message, state, raised_at_utc, acknowledged_at_utc, cleared_at_utc
-                    """, connection);
-                command.Parameters.AddWithValue("tenant_id", request.TenantId);
-                command.Parameters.AddWithValue("unit_id", request.UnitId);
-                command.Parameters.AddWithValue("tag_id", sample.TagId);
-                command.Parameters.AddWithValue("severity", result.Severity);
-                command.Parameters.AddWithValue("message", result.Message);
-                var alarm = await ReadAlarmAsync(command, cancellationToken);
-                if (alarm is not null)
-                {
-                    raised.Add(alarm);
-                }
+                alarmingTagIds.Add(sample.TagId);
+                severities.Add(result.Severity);
+                messages.Add(result.Message);
             }
             else
             {
-                await using var command = new NpgsqlCommand($"""
-                    update {tableName}
-                    set state = 'cleared', cleared_at_utc = now()
-                    where tag_id = @tag_id and state in ('active', 'acknowledged')
-                    returning id, tenant_id, unit_id, tag_id, severity, message, state, raised_at_utc, acknowledged_at_utc, cleared_at_utc
-                    """, connection);
-                command.Parameters.AddWithValue("tag_id", sample.TagId);
-                cleared.AddRange(await ReadAlarmsAsync(command, cancellationToken));
+                clearingTagIds.Add(sample.TagId);
             }
         }
 
+        var raised = new List<AlarmDto>();
+        var cleared = new List<AlarmDto>();
+        if (alarmingTagIds.Count == 0 && clearingTagIds.Count == 0)
+        {
+            return new AlarmChanges(raised, cleared);
+        }
+
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var tx = await connection.BeginTransactionAsync(cancellationToken);
+
+        if (alarmingTagIds.Count > 0)
+        {
+            // One active alarm per tag: the partial unique index on (tag_id) where state in
+            // ('active','acknowledged') makes the de-duplication atomic, so do nothing when a tag
+            // already has an open alarm (including duplicate tags within this batch).
+            await using var command = new NpgsqlCommand($"""
+                insert into {tableName} (id, tenant_id, unit_id, tag_id, severity, message, state, raised_at_utc)
+                select gen_random_uuid(), @tenant_id, @unit_id, a.tag_id, a.severity, a.message, 'active', now()
+                from unnest(@tag_ids, @severities, @messages) as a(tag_id, severity, message)
+                on conflict (tag_id) where state in ('active', 'acknowledged') do nothing
+                returning id, tenant_id, unit_id, tag_id, severity, message, state, raised_at_utc, acknowledged_at_utc, cleared_at_utc
+                """, connection, tx);
+            command.Parameters.AddWithValue("tenant_id", request.TenantId);
+            command.Parameters.AddWithValue("unit_id", request.UnitId);
+            command.Parameters.Add(new NpgsqlParameter("tag_ids", NpgsqlDbType.Array | NpgsqlDbType.Uuid) { Value = alarmingTagIds.ToArray() });
+            command.Parameters.Add(new NpgsqlParameter("severities", NpgsqlDbType.Array | NpgsqlDbType.Text) { Value = severities.ToArray() });
+            command.Parameters.Add(new NpgsqlParameter("messages", NpgsqlDbType.Array | NpgsqlDbType.Text) { Value = messages.ToArray() });
+            raised.AddRange(await ReadAlarmsAsync(command, cancellationToken));
+        }
+
+        if (clearingTagIds.Count > 0)
+        {
+            await using var command = new NpgsqlCommand($"""
+                update {tableName}
+                set state = 'cleared', cleared_at_utc = now()
+                where tag_id = any(@tag_ids) and state in ('active', 'acknowledged')
+                returning id, tenant_id, unit_id, tag_id, severity, message, state, raised_at_utc, acknowledged_at_utc, cleared_at_utc
+                """, connection, tx);
+            command.Parameters.Add(new NpgsqlParameter("tag_ids", NpgsqlDbType.Array | NpgsqlDbType.Uuid) { Value = clearingTagIds.ToArray() });
+            cleared.AddRange(await ReadAlarmsAsync(command, cancellationToken));
+        }
+
+        await tx.CommitAsync(cancellationToken);
         return new AlarmChanges(raised, cleared);
     }
 
