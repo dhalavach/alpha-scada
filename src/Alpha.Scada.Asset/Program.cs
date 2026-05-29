@@ -20,7 +20,7 @@ builder.Services.AddJwtTokenService(builder.Configuration);
 builder.Host.UseAlphaMessaging("asset", options =>
 {
     options.PublishMessagesToMqttTopic<UnitStatusChanged>(message => Topics.Status(message.TenantKey, message.SiteKey, message.UnitKey));
-    options.ListenToMqttTopic(Topics.ShadowTelemetryStoredWildcard);
+    options.ListenToMqttTopic(Topics.TelemetryStoredWildcard);
 });
 
 var app = builder.Build();

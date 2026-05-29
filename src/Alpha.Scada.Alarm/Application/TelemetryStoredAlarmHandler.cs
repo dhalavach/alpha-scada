@@ -4,7 +4,7 @@ using Alpha.Scada.Telemetry.Contracts;
 
 namespace Alpha.Scada.Alarm.Application;
 
-public sealed class ShadowTelemetryAlarmHandler(ThresholdCache thresholds, AlarmRepository repository)
+public sealed class TelemetryStoredAlarmHandler(ThresholdCache thresholds, AlarmService service)
 {
     public async Task Handle(TelemetryBatchStored message, CancellationToken cancellationToken)
     {
@@ -33,7 +33,7 @@ public sealed class ShadowTelemetryAlarmHandler(ThresholdCache thresholds, Alarm
             return;
         }
 
-        await repository.EvaluateShadowAsync(new AlarmEvaluationRequest(
+        await service.EvaluateAsync(new AlarmEvaluationRequest(
             message.TenantId,
             message.UnitId,
             message.UnitKey,

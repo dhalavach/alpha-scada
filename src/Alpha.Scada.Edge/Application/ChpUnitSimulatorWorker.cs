@@ -1,10 +1,14 @@
+using System.Text.Json;
 using Alpha.Scada.Contracts;
+using Alpha.Scada.ServiceDefaults.Messaging;
+using MQTTnet;
+using MQTTnet.Client;
+using MQTTnet.Protocol;
 
 namespace Alpha.Scada.Edge.Application;
 
 public sealed class ChpUnitSimulatorWorker(
     IConfiguration configuration,
-    EdgeTelemetryPipeline pipeline,
     ILogger<ChpUnitSimulatorWorker> logger) : BackgroundService
 {
     private readonly Random _random = new();
@@ -17,15 +21,46 @@ public sealed class ChpUnitSimulatorWorker(
             return;
         }
 
+        var factory = new MqttFactory();
+        using var client = factory.CreateMqttClient();
+        var optionsBuilder = new MqttClientOptionsBuilder()
+            .WithClientId($"alpha-scada-simulator-{Environment.MachineName}")
+            .WithTcpServer(configuration["Mqtt:Host"] ?? "localhost", configuration.GetValue("Mqtt:Port", 1883));
+
+        var mqttUser = configuration["Simulator:MqttUser"] ?? configuration["Mqtt:User"];
+        var mqttPassword = configuration["Simulator:MqttPassword"] ?? configuration["Mqtt:Password"];
+        if (!string.IsNullOrWhiteSpace(mqttUser))
+        {
+            optionsBuilder.WithCredentials(mqttUser, mqttPassword);
+        }
+
+        var options = optionsBuilder.Build();
+        var jsonOptions = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        var topic = Topics.Telemetry("demo-operator", "demo-energy-site", "chp-demo-001");
+
         logger.LogInformation("Starting edge telemetry simulator.");
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
+                if (!client.IsConnected)
+                {
+                    await client.ConnectAsync(options, stoppingToken);
+                    logger.LogInformation("Telemetry simulator connected to MQTT broker at {Host}:{Port}.", configuration["Mqtt:Host"] ?? "localhost", configuration.GetValue("Mqtt:Port", 1883));
+                }
+
                 var now = DateTimeOffset.UtcNow;
                 var wave = Math.Sin(now.ToUnixTimeSeconds() / 30.0);
                 var envelope = new EdgeTelemetryEnvelope("1.0", "chp-demo-001", now, CreateSamples(now, wave));
-                await pipeline.IngestAsync("demo-operator", "demo-energy-site", "chp-demo-001", envelope, stoppingToken);
+                var payload = JsonSerializer.SerializeToUtf8Bytes(envelope, jsonOptions);
+
+                await client.PublishAsync(
+                    new MqttApplicationMessageBuilder()
+                        .WithTopic(topic)
+                        .WithPayload(payload)
+                        .WithQualityOfServiceLevel(MqttQualityOfServiceLevel.AtLeastOnce)
+                        .Build(),
+                    stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {

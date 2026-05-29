@@ -27,7 +27,7 @@ using Xunit.Sdk;
 
 namespace Alpha.Scada.Tests;
 
-public sealed class TelemetryShadowIngestionTests
+public sealed class TelemetryPrimaryIngestionTests
 {
     private static readonly Guid TenantId = Guid.Parse("10000000-0000-0000-0000-000000000001");
     private static readonly Guid SiteId = Guid.Parse("20000000-0000-0000-0000-000000000001");
@@ -35,9 +35,9 @@ public sealed class TelemetryShadowIngestionTests
     private static readonly Guid TagId = Guid.Parse("40000000-0000-0000-0000-000000000001");
 
     [Fact]
-    public async Task Raw_mqtt_telemetry_is_normalized_into_shadow_storage_and_published_as_domain_event()
+    public async Task Raw_mqtt_telemetry_is_normalized_into_primary_storage_and_published_as_domain_event()
     {
-        var tempDir = Path.Combine(Path.GetTempPath(), $"alpha-telemetry-shadow-test-{Guid.NewGuid():N}");
+        var tempDir = Path.Combine(Path.GetTempPath(), $"alpha-telemetry-primary-test-{Guid.NewGuid():N}");
         Directory.CreateDirectory(tempDir);
         try
         {
@@ -74,7 +74,7 @@ public sealed class TelemetryShadowIngestionTests
             {
                 await postgres.DisposeAsync();
                 await mosquitto.DisposeAsync();
-                throw SkipException.ForSkip($"Docker is not available for telemetry shadow integration test: {ex.Message}");
+                throw SkipException.ForSkip($"Docker is not available for telemetry primary integration test: {ex.Message}");
             }
 
             await using (postgres)
@@ -95,10 +95,10 @@ public sealed class TelemetryShadowIngestionTests
                 };
 
                 await subscriber.ConnectAsync(new MqttClientOptionsBuilder()
-                    .WithClientId($"telemetry-shadow-subscriber-{Guid.NewGuid():N}")
+                    .WithClientId($"telemetry-primary-subscriber-{Guid.NewGuid():N}")
                     .WithTcpServer(mosquitto.Hostname, mosquitto.GetMappedPublicPort(1883))
                     .Build());
-                await subscriber.SubscribeAsync(Subscribe(Topics.ShadowTelemetryStoredWildcard));
+                await subscriber.SubscribeAsync(Subscribe(Topics.TelemetryStoredWildcard));
 
                 using var host = BuildTelemetryHost(
                     connectionString,
@@ -111,7 +111,7 @@ public sealed class TelemetryShadowIngestionTests
 
                 using var publisher = factory.CreateMqttClient();
                 await publisher.ConnectAsync(new MqttClientOptionsBuilder()
-                    .WithClientId($"telemetry-shadow-publisher-{Guid.NewGuid():N}")
+                    .WithClientId($"telemetry-primary-publisher-{Guid.NewGuid():N}")
                     .WithTcpServer(mosquitto.Hostname, mosquitto.GetMappedPublicPort(1883))
                     .Build());
 
@@ -131,11 +131,33 @@ public sealed class TelemetryShadowIngestionTests
                     .Build());
 
                 Assert.Equal(
-                    "alpha/_shadow/demo-operator/demo-energy-site/chp-demo-001/telemetry-stored",
+                    "alpha/demo-operator/demo-energy-site/chp-demo-001/telemetry-stored",
                     await receivedTopic.Task.WaitAsync(TimeSpan.FromSeconds(10)));
 
-                Assert.Equal(1, await CountRowsAsync(connectionString, "telemetry_samples_shadow"));
-                Assert.Equal(1, await CountRowsAsync(connectionString, "tag_current_shadow"));
+                Assert.Equal(1, await CountRowsAsync(connectionString, "telemetry_samples"));
+                Assert.Equal(1, await CountRowsAsync(connectionString, "tag_current"));
+
+                await host.Services.GetRequiredService<TelemetryRepository>().IngestAsync(
+                    new TelemetryIngestRequest(
+                        TenantId,
+                        UnitId,
+                        [
+                            new(
+                                TagId,
+                                "engine.electrical_output_kw",
+                                "Electrical Output",
+                                "Engine",
+                                "kW",
+                                45,
+                                70,
+                                61.2,
+                                "good",
+                                timestamp)
+                        ]),
+                    CancellationToken.None);
+
+                Assert.Equal(1, await CountRowsAsync(connectionString, "telemetry_samples"));
+                Assert.Equal(1, await CountRowsAsync(connectionString, "tag_current"));
 
                 await host.StopAsync();
             }
@@ -171,14 +193,14 @@ public sealed class TelemetryShadowIngestionTests
                 services.AddHttpClient("asset", client => client.BaseAddress = new Uri(catalogBaseAddress));
                 services.AddHttpClient("tagCatalog", client => client.BaseAddress = new Uri(catalogBaseAddress));
             })
-            .UseAlphaMessaging("telemetry-shadow-test", options =>
+            .UseAlphaMessaging("telemetry-primary-test", options =>
             {
                 options.Discovery.IncludeAssembly(typeof(TelemetryIngestionHandler).Assembly);
                 options.ListenToMqttTopic(Topics.TelemetryWildcard)
                     .UseInterop(new RawTelemetryEnvelopeMapper())
                     .DefaultIncomingMessage(typeof(TelemetryEnvelopeV1));
                 options.PublishMessagesToMqttTopic<TelemetryBatchStored>(message =>
-                    Topics.ShadowTelemetryStored(message.TenantKey, message.SiteKey, message.UnitKey));
+                    Topics.TelemetryStored(message.TenantKey, message.SiteKey, message.UnitKey));
             })
             .Build();
     }

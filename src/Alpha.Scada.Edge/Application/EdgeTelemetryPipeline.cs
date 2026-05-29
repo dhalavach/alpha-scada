@@ -16,6 +16,12 @@ public sealed class EdgeTelemetryPipeline(
             return;
         }
 
+        if (!configuration.GetValue("Edge:LegacyHttpFanOut", true))
+        {
+            logger.LogDebug("Legacy HTTP telemetry fan-out is disabled for {Tenant}/{Site}/{Unit}.", tenantKey, siteKey, unitKey);
+            return;
+        }
+
         var tenant = await httpClientFactory.CreateClient("tenant")
             .GetFromJsonAsync<TenantDto>($"/internal/v1/tenants/resolve/{tenantKey}", cancellationToken);
         if (tenant is null)

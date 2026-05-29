@@ -11,12 +11,14 @@ topic write alpha/_dlq/edge-ingestor/#
 user telemetry
 topic read alpha/+/+/+/telemetry
 topic read alpha/+/+/+/status
+topic write alpha/+/+/+/telemetry-stored
 topic write alpha/_shadow/+/+/+/telemetry-stored
 topic write alpha/_dlq/telemetry/#
 
 user alarm
 topic read alpha/+/+/+/telemetry
 topic read alpha/+/+/+/status
+topic read alpha/+/+/+/telemetry-stored
 topic read alpha/_shadow/+/+/+/telemetry-stored
 topic write alpha/+/+/+/alarm/+
 topic write alpha/_dlq/alarm/#
@@ -24,6 +26,7 @@ topic write alpha/_dlq/alarm/#
 user asset
 topic read alpha/+/+/+/telemetry
 topic read alpha/+/+/+/status
+topic read alpha/+/+/+/telemetry-stored
 topic read alpha/_shadow/+/+/+/telemetry-stored
 topic write alpha/+/+/+/status
 topic write alpha/_dlq/asset/#

@@ -27,13 +27,24 @@ services:
     networks:
       - alpha-internal
     depends_on:
-      - identity
-      - tenant
-      - asset
-      - tag-catalog
-      - telemetry
-      - alarm
-      - reporting
+      postgres:
+        condition: service_healthy
+      mosquitto:
+        condition: service_started
+      identity:
+        condition: service_started
+      tenant:
+        condition: service_started
+      asset:
+        condition: service_started
+      tag-catalog:
+        condition: service_started
+      telemetry:
+        condition: service_started
+      alarm:
+        condition: service_started
+      reporting:
+        condition: service_started
 
   identity:
     build:
@@ -50,7 +61,8 @@ services:
     networks:
       - alpha-internal
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
 
   tenant:
     build:
@@ -66,7 +78,8 @@ services:
     networks:
       - alpha-internal
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
 
   asset:
     build:
@@ -87,9 +100,12 @@ services:
     networks:
       - alpha-internal
     depends_on:
-      - postgres
-      - mosquitto
-      - tenant
+      postgres:
+        condition: service_healthy
+      mosquitto:
+        condition: service_started
+      tenant:
+        condition: service_started
 
   tag-catalog:
     build:
@@ -105,7 +121,8 @@ services:
     networks:
       - alpha-internal
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
 
   telemetry:
     build:
@@ -128,11 +145,16 @@ services:
     networks:
       - alpha-internal
     depends_on:
-      - postgres
-      - mosquitto
-      - tenant
-      - asset
-      - tag-catalog
+      postgres:
+        condition: service_healthy
+      mosquitto:
+        condition: service_started
+      tenant:
+        condition: service_started
+      asset:
+        condition: service_started
+      tag-catalog:
+        condition: service_started
 
   alarm:
     build:
@@ -155,11 +177,16 @@ services:
     networks:
       - alpha-internal
     depends_on:
-      - postgres
-      - mosquitto
-      - asset
-      - tenant
-      - tag-catalog
+      postgres:
+        condition: service_healthy
+      mosquitto:
+        condition: service_started
+      asset:
+        condition: service_started
+      tenant:
+        condition: service_started
+      tag-catalog:
+        condition: service_started
 
   reporting:
     build:
@@ -179,10 +206,14 @@ services:
     networks:
       - alpha-internal
     depends_on:
-      - postgres
-      - asset
-      - telemetry
-      - alarm
+      postgres:
+        condition: service_healthy
+      asset:
+        condition: service_started
+      telemetry:
+        condition: service_started
+      alarm:
+        condition: service_started
 
   edge:
     build:
@@ -199,6 +230,9 @@ services:
       Mqtt__Port: "1883"
       Mqtt__User: ${MQTT_USER_EDGE_INGESTOR:?MQTT_USER_EDGE_INGESTOR must be set in .env}
       Mqtt__Password: ${MQTT_PASSWORD_EDGE_INGESTOR:?MQTT_PASSWORD_EDGE_INGESTOR must be set in .env}
+      Edge__LegacyHttpFanOut: "true"
+      Simulator__MqttUser: ${MQTT_USER_EDGE:?MQTT_USER_EDGE must be set in .env}
+      Simulator__MqttPassword: ${MQTT_PASSWORD_EDGE:?MQTT_PASSWORD_EDGE must be set in .env}
       ServiceAuth__Token: ${SERVICE_AUTH_TOKEN:?SERVICE_AUTH_TOKEN must be set in .env}
       Simulator__Enabled: "true"
       Services__Tenant: http://tenant:8080
@@ -210,14 +244,22 @@ services:
     networks:
       - alpha-internal
     depends_on:
-      - postgres
-      - mosquitto
-      - tenant
-      - asset
-      - tag-catalog
-      - telemetry
-      - alarm
-      - gateway
+      postgres:
+        condition: service_healthy
+      mosquitto:
+        condition: service_started
+      tenant:
+        condition: service_started
+      asset:
+        condition: service_started
+      tag-catalog:
+        condition: service_started
+      telemetry:
+        condition: service_started
+      alarm:
+        condition: service_started
+      gateway:
+        condition: service_started
 
   frontend:
     build:
@@ -236,6 +278,12 @@ services:
       POSTGRES_DB: alpha_identity
       POSTGRES_USER: alpha
       POSTGRES_PASSWORD: alpha
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U alpha -d alpha_identity"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
     networks:
       - alpha-internal
     volumes:

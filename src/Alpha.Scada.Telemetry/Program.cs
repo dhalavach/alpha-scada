@@ -27,7 +27,7 @@ builder.Host.UseAlphaMessaging("telemetry", options =>
         .UseInterop(new RawTelemetryEnvelopeMapper())
         .DefaultIncomingMessage(typeof(TelemetryEnvelopeV1));
     options.PublishMessagesToMqttTopic<TelemetryBatchStored>(message =>
-        Topics.ShadowTelemetryStored(message.TenantKey, message.SiteKey, message.UnitKey));
+        Topics.TelemetryStored(message.TenantKey, message.SiteKey, message.UnitKey));
 });
 
 var app = builder.Build();

@@ -30,7 +30,7 @@ public sealed class TelemetryIngestionHandler(
             return;
         }
 
-        await repository.IngestShadowAsync(
+        await repository.IngestAsync(
             new(batch.TenantId, batch.UnitId, batch.Samples),
             cancellationToken);
 
