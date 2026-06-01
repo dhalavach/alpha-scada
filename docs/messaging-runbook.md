@@ -19,6 +19,11 @@ docker compose --profile ops up -d prometheus grafana
 open http://localhost:3000
 ```
 
+Each service exports app-side Wolverine metrics at `/metrics`, including
+outbox depth, error queue depth, and telemetry sample count where applicable.
+Broker-side MQTT DLQ depth and subscriber lag still require a dedicated
+Mosquitto exporter or log-derived metric in a later operations slice.
+
 ## MQTT DLQ Is Non-Empty
 
 Inspect messages:

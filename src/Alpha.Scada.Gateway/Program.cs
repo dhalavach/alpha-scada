@@ -17,6 +17,7 @@ const string serviceName = "alpha-scada-gateway";
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddJwtTokenService(builder.Configuration);
+builder.Services.AddServiceDatabase(builder.Configuration);
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
@@ -69,8 +70,10 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok", service = serviceName, utc = DateTimeOffset.UtcNow }));
-app.MapGet("/ready", () => Results.Ok(new { status = "ready" }));
-app.MapGet("/metrics", () => MinimalApi.Metrics(serviceName));
+app.MapGet("/ready", (Npgsql.NpgsqlDataSource dataSource, CancellationToken cancellationToken) =>
+    MinimalApi.ReadyAsync(dataSource, cancellationToken));
+app.MapGet("/metrics", (Npgsql.NpgsqlDataSource dataSource, CancellationToken cancellationToken) =>
+    MinimalApi.MetricsAsync(serviceName, dataSource, cancellationToken));
 
 app.MapPost("/api/auth/login", async (LoginRequest request, IHttpClientFactory factory, CancellationToken cancellationToken) =>
 {

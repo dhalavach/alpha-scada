@@ -19,6 +19,8 @@ groups:
           summary: "Wolverine error queue is not empty"
           description: "Service {{ $labels.service }} has {{ $value }} dead-lettered messages."
 
+      # These MQTT broker-side metrics require a Mosquitto exporter or log-derived
+      # metric source. The rules are inert until that exporter is added.
       - alert: AlphaScadaMqttDlqNotEmpty
         expr: alpha_scada_mqtt_dlq_depth > 0
         for: 5m

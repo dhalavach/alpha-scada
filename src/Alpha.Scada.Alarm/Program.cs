@@ -34,8 +34,10 @@ var app = builder.Build();
 await app.Services.GetRequiredService<AlarmMigrator>().MigrateAsync(CancellationToken.None);
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok", service = serviceName, utc = DateTimeOffset.UtcNow }));
-app.MapGet("/ready", MinimalApi.ReadyAsync);
-app.MapGet("/metrics", () => MinimalApi.Metrics(serviceName));
+app.MapGet("/ready", (Npgsql.NpgsqlDataSource dataSource, CancellationToken cancellationToken) =>
+    MinimalApi.ReadyAsync(dataSource, cancellationToken));
+app.MapGet("/metrics", (Npgsql.NpgsqlDataSource dataSource, CancellationToken cancellationToken) =>
+    MinimalApi.MetricsAsync(serviceName, dataSource, cancellationToken));
 
 app.MapGet("/internal/v1/alarms/active", async (HttpContext context, JwtTokenService tokens, AlarmService service) =>
 {
