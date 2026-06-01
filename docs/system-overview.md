@@ -272,9 +272,9 @@ Current security is intentionally simple:
 - Passwords use PBKDF2 hashing.
 - Identity issues signed JWTs.
 - Gateway validates JWTs.
-- Gateway forwards user context to services with `X-User-*` headers.
-- Gateway forwards the original bearer token to services.
-- Services validate the JWT and apply tenant scoping from claims.
+- Gateway validates JWTs at the public boundary and forwards the original bearer token to internal services.
+- Internal services validate the forwarded JWT themselves and derive tenant/user/role context from claims.
+- Plain `X-User-*` identity headers are not trusted.
 
 Fixed roles:
 
@@ -301,6 +301,7 @@ Local observability files:
 
 - `ops/prometheus/prometheus.yml`: Prometheus scrape targets for all services.
 - `ops/grafana/dashboards/alpha-scada.json`: starter Grafana dashboard.
+- `ops/grafana/dashboards/messaging.json`: messaging health dashboard.
 - `ops/scripts/backup-postgres.sh`: backs up all service databases.
 - `ops/scripts/restore-postgres.sh`: restores a named service database from a dump.
 
@@ -377,18 +378,17 @@ docker compose build
 
 Expected non-blocking warnings:
 
-- `.NET 10` route analyzer warning `AD0001` during build/publish.
-- Vite/Rollup warning about SignalR pure annotations during frontend build.
-
-Both warnings currently allow successful builds.
+- Vite/Rollup may warn about SignalR pure annotations during frontend builds.
 
 ## Known Limitations
 
-Still intentionally deferred:
+Current known gaps and deferred capabilities:
 
 - Sparkplug B.
 - TimescaleDB.
-- Outbox/event bus.
+- Moving database migrations out of application startup.
+- Gateway forwarding cleanup/resilience policies for downstream HTTP calls.
+- Row-level security in PostgreSQL.
 - HA PostgreSQL and service clustering.
 - Multi-region deployment.
 - OIDC provider integration.
