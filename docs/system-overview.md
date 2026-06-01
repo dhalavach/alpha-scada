@@ -297,6 +297,12 @@ GET /ready
 GET /metrics
 ```
 
+The metrics endpoint includes a compatibility `*_up` gauge plus shared
+`alpha_scada_service_up`, `alpha_scada_wolverine_outbox_depth`,
+`alpha_scada_wolverine_error_queue_depth`, and
+`alpha_scada_telemetry_samples_written_total` metrics where the service
+database has the relevant tables.
+
 Local observability files:
 
 - `ops/prometheus/prometheus.yml`: Prometheus scrape targets for all services.

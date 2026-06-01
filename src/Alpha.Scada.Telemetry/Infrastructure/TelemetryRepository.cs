@@ -1,5 +1,6 @@
 using Alpha.Scada.Contracts;
 using Npgsql;
+using NpgsqlTypes;
 
 namespace Alpha.Scada.Telemetry.Infrastructure;
 
@@ -21,33 +22,56 @@ public sealed class TelemetryRepository(NpgsqlDataSource dataSource)
         TelemetryIngestRequest request,
         CancellationToken cancellationToken)
     {
-        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        await using var tx = await connection.BeginTransactionAsync(cancellationToken);
-        foreach (var sample in request.Samples)
+        var count = request.Samples.Count;
+        if (count == 0)
         {
-            await using var command = new NpgsqlCommand($"""
-                insert into {samplesTable} (tenant_id, unit_id, tag_id, tag_key, timestamp_utc, value_double, quality, source_timestamp_utc, received_at_utc)
-                values (@tenant_id, @unit_id, @tag_id, @tag_key, @timestamp_utc, @value, @quality, @source_timestamp_utc, now())
-                on conflict (tag_id, timestamp_utc) do nothing;
-
-                insert into {currentTable} (tenant_id, unit_id, tag_id, tag_key, value_double, quality, timestamp_utc)
-                values (@tenant_id, @unit_id, @tag_id, @tag_key, @value, @quality, @timestamp_utc)
-                on conflict (tag_id) do update
-                set value_double = excluded.value_double,
-                    quality = excluded.quality,
-                    timestamp_utc = excluded.timestamp_utc;
-                """, connection, tx);
-            command.Parameters.AddWithValue("tenant_id", request.TenantId);
-            command.Parameters.AddWithValue("unit_id", request.UnitId);
-            command.Parameters.AddWithValue("tag_id", sample.TagId);
-            command.Parameters.AddWithValue("tag_key", sample.TagKey);
-            command.Parameters.AddWithValue("timestamp_utc", sample.SourceTimestampUtc);
-            command.Parameters.AddWithValue("source_timestamp_utc", sample.SourceTimestampUtc);
-            command.Parameters.AddWithValue("value", sample.Value);
-            command.Parameters.AddWithValue("quality", sample.Quality);
-            await command.ExecuteNonQueryAsync(cancellationToken);
+            return;
         }
 
+        var tagIds = new Guid[count];
+        var tagKeys = new string[count];
+        var timestamps = new DateTimeOffset[count];
+        var values = new double[count];
+        var qualities = new string[count];
+
+        var index = 0;
+        foreach (var sample in request.Samples)
+        {
+            tagIds[index] = sample.TagId;
+            tagKeys[index] = sample.TagKey;
+            timestamps[index] = sample.SourceTimestampUtc;
+            values[index] = sample.Value;
+            qualities[index] = sample.Quality;
+            index++;
+        }
+
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var tx = await connection.BeginTransactionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand($"""
+            insert into {samplesTable} (tenant_id, unit_id, tag_id, tag_key, timestamp_utc, value_double, quality, source_timestamp_utc, received_at_utc)
+            select @tenant_id, @unit_id, s.tag_id, s.tag_key, s.timestamp_utc, s.value_double, s.quality, s.timestamp_utc, now()
+            from unnest(@tag_ids, @tag_keys, @timestamps, @values, @qualities)
+                as s(tag_id, tag_key, timestamp_utc, value_double, quality)
+            on conflict (tag_id, timestamp_utc) do nothing;
+
+            insert into {currentTable} (tenant_id, unit_id, tag_id, tag_key, value_double, quality, timestamp_utc)
+            select distinct on (s.tag_id) @tenant_id, @unit_id, s.tag_id, s.tag_key, s.value_double, s.quality, s.timestamp_utc
+            from unnest(@tag_ids, @tag_keys, @timestamps, @values, @qualities)
+                as s(tag_id, tag_key, timestamp_utc, value_double, quality)
+            order by s.tag_id, s.timestamp_utc desc
+            on conflict (tag_id) do update
+            set value_double = excluded.value_double,
+                quality = excluded.quality,
+                timestamp_utc = excluded.timestamp_utc;
+            """, connection, tx);
+        command.Parameters.AddWithValue("tenant_id", request.TenantId);
+        command.Parameters.AddWithValue("unit_id", request.UnitId);
+        command.Parameters.Add(new NpgsqlParameter("tag_ids", NpgsqlDbType.Array | NpgsqlDbType.Uuid) { Value = tagIds });
+        command.Parameters.Add(new NpgsqlParameter("tag_keys", NpgsqlDbType.Array | NpgsqlDbType.Text) { Value = tagKeys });
+        command.Parameters.Add(new NpgsqlParameter("timestamps", NpgsqlDbType.Array | NpgsqlDbType.TimestampTz) { Value = timestamps });
+        command.Parameters.Add(new NpgsqlParameter("values", NpgsqlDbType.Array | NpgsqlDbType.Double) { Value = values });
+        command.Parameters.Add(new NpgsqlParameter("qualities", NpgsqlDbType.Array | NpgsqlDbType.Text) { Value = qualities });
+        await command.ExecuteNonQueryAsync(cancellationToken);
         await tx.CommitAsync(cancellationToken);
     }
 

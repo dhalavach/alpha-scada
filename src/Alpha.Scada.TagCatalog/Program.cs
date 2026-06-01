@@ -16,8 +16,10 @@ var app = builder.Build();
 await app.Services.GetRequiredService<TagCatalogMigrator>().MigrateAsync(CancellationToken.None);
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok", service = serviceName, utc = DateTimeOffset.UtcNow }));
-app.MapGet("/ready", MinimalApi.ReadyAsync);
-app.MapGet("/metrics", () => MinimalApi.Metrics(serviceName));
+app.MapGet("/ready", (Npgsql.NpgsqlDataSource dataSource, CancellationToken cancellationToken) =>
+    MinimalApi.ReadyAsync(dataSource, cancellationToken));
+app.MapGet("/metrics", (Npgsql.NpgsqlDataSource dataSource, CancellationToken cancellationToken) =>
+    MinimalApi.MetricsAsync(serviceName, dataSource, cancellationToken));
 
 app.MapGet("/internal/v1/units/{unitId:guid}/tags", async (Guid unitId, HttpContext context, JwtTokenService tokens, TagCatalogService service) =>
 {

@@ -28,8 +28,10 @@ var app = builder.Build();
 await app.Services.GetRequiredService<AssetMigrator>().MigrateAsync(CancellationToken.None);
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok", service = serviceName, utc = DateTimeOffset.UtcNow }));
-app.MapGet("/ready", MinimalApi.ReadyAsync);
-app.MapGet("/metrics", () => MinimalApi.Metrics(serviceName));
+app.MapGet("/ready", (Npgsql.NpgsqlDataSource dataSource, CancellationToken cancellationToken) =>
+    MinimalApi.ReadyAsync(dataSource, cancellationToken));
+app.MapGet("/metrics", (Npgsql.NpgsqlDataSource dataSource, CancellationToken cancellationToken) =>
+    MinimalApi.MetricsAsync(serviceName, dataSource, cancellationToken));
 
 app.MapGet("/internal/v1/sites", async (HttpContext context, JwtTokenService tokens, AssetService service) =>
 {
