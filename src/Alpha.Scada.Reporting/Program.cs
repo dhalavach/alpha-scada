@@ -14,9 +14,9 @@ builder.Services.AddSingleton<ReportingMigrator>();
 builder.Services.AddSingleton<ReportingRepository>();
 builder.Services.AddSingleton<ReportingService>();
 builder.Services.AddJwtTokenService(builder.Configuration);
-builder.Services.AddHttpClient("asset", client => client.BaseAddress = new Uri(builder.Configuration["Services:Asset"] ?? "http://localhost:5212"));
-builder.Services.AddHttpClient("telemetry", client => client.BaseAddress = new Uri(builder.Configuration["Services:Telemetry"] ?? "http://localhost:5214"));
-builder.Services.AddHttpClient("alarm", client => client.BaseAddress = new Uri(builder.Configuration["Services:Alarm"] ?? "http://localhost:5215"));
+builder.Services.AddHttpClient("asset", client => client.BaseAddress = new Uri(builder.Configuration["Services:Asset"] ?? "http://localhost:5212")).AddAlphaResilience();
+builder.Services.AddHttpClient("telemetry", client => client.BaseAddress = new Uri(builder.Configuration["Services:Telemetry"] ?? "http://localhost:5214")).AddAlphaResilience();
+builder.Services.AddHttpClient("alarm", client => client.BaseAddress = new Uri(builder.Configuration["Services:Alarm"] ?? "http://localhost:5215")).AddAlphaResilience();
 builder.Host.UseAlphaMessaging("reporting", options =>
 {
     options.ListenToPostgresqlQueue("reports_requested");
