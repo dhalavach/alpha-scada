@@ -11,3 +11,4 @@ dist/
 *.log
 .env
 ops/mosquitto/passwords
+TestResults/

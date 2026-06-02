@@ -1,90 +1,48 @@
-using Alpha.Scada.Alarm.Contracts;
 using Alpha.Scada.Alarm.Infrastructure;
 using Alpha.Scada.Contracts;
-using Wolverine;
 
 namespace Alpha.Scada.Alarm.Application;
 
-public sealed class AlarmService(AlarmRepository repository, UnitKeyResolver unitKeyResolver, IMessageBus messageBus)
+public sealed class AlarmService(AlarmRepository repository, UnitKeyResolver unitKeyResolver)
 {
     public async Task EvaluateAsync(AlarmEvaluationRequest request, CancellationToken cancellationToken)
     {
-        var changes = await repository.EvaluateAsync(request, cancellationToken);
-        foreach (var alarm in changes.Raised)
-        {
-            await PublishRaisedAsync(alarm, cancellationToken);
-        }
-
-        foreach (var alarm in changes.Cleared)
-        {
-            await PublishClearedAsync(alarm, cancellationToken);
-        }
+        var route = await ResolveRouteAsync(request.UnitId, cancellationToken);
+        await repository.EvaluateAsync(request, route, cancellationToken);
     }
 
-    public async Task RaiseCommunicationLostAsync(UnitDto unit, CancellationToken cancellationToken)
+    public async Task RaiseCommunicationLostAsync(UnitDto unit, UnitRouteKeys? knownRoute, CancellationToken cancellationToken)
     {
-        var alarm = await repository.RaiseCommunicationLostAsync(unit, cancellationToken);
-        if (alarm is not null)
-        {
-            await PublishRaisedAsync(alarm, cancellationToken);
-        }
+        var route = knownRoute is null
+            ? await ResolveRouteAsync(unit.Id, cancellationToken)
+            : ToAlarmRoute(knownRoute);
+        await repository.RaiseCommunicationLostAsync(unit, route, cancellationToken);
     }
+
+    public Task RaiseCommunicationLostAsync(UnitDto unit, CancellationToken cancellationToken) =>
+        RaiseCommunicationLostAsync(unit, null, cancellationToken);
 
     public Task<IReadOnlyCollection<AlarmDto>> GetActiveAsync(CurrentUserDto user, CancellationToken cancellationToken) =>
         repository.GetActiveAsync(user, cancellationToken);
 
     public async Task<bool> AcknowledgeAsync(Guid alarmId, CurrentUserDto user, CancellationToken cancellationToken)
     {
-        var alarm = await repository.AcknowledgeAsync(alarmId, user, cancellationToken);
-        if (alarm is null)
+        var existing = await repository.GetActiveAlarmAsync(alarmId, user, cancellationToken);
+        if (existing is null)
         {
             return false;
         }
 
-        var route = await unitKeyResolver.ResolveAsync(alarm.UnitId, cancellationToken);
-        await messageBus.PublishAsync(new AlarmAcknowledged(
-            alarm.Id,
-            alarm.TenantId,
-            alarm.UnitId,
-            alarm.TagId,
-            route.TenantKey,
-            route.SiteKey,
-            route.UnitKey,
-            user.UserId,
-            alarm.AcknowledgedAtUtc ?? DateTimeOffset.UtcNow));
-        return true;
+        var route = await ResolveRouteAsync(existing.UnitId, cancellationToken);
+        return await repository.AcknowledgeAsync(alarmId, user, route, cancellationToken) is not null;
     }
 
     public Task<int> CountForUnitPeriodAsync(Guid unitId, string period, CancellationToken cancellationToken) =>
         repository.CountForUnitPeriodAsync(unitId, period, cancellationToken);
 
-    private async Task PublishRaisedAsync(AlarmDto alarm, CancellationToken cancellationToken)
-    {
-        var route = await unitKeyResolver.ResolveAsync(alarm.UnitId, cancellationToken);
-        await messageBus.PublishAsync(new AlarmRaised(
-            alarm.Id,
-            alarm.TenantId,
-            alarm.UnitId,
-            alarm.TagId,
-            route.TenantKey,
-            route.SiteKey,
-            route.UnitKey,
-            alarm.Severity,
-            alarm.Message,
-            alarm.RaisedAtUtc));
-    }
+    private async Task<AlarmRouteKeys> ResolveRouteAsync(Guid unitId, CancellationToken cancellationToken) =>
+        ToAlarmRoute(await unitKeyResolver.ResolveAsync(unitId, cancellationToken));
 
-    private async Task PublishClearedAsync(AlarmDto alarm, CancellationToken cancellationToken)
-    {
-        var route = await unitKeyResolver.ResolveAsync(alarm.UnitId, cancellationToken);
-        await messageBus.PublishAsync(new AlarmCleared(
-            alarm.Id,
-            alarm.TenantId,
-            alarm.UnitId,
-            alarm.TagId,
-            route.TenantKey,
-            route.SiteKey,
-            route.UnitKey,
-            alarm.ClearedAtUtc ?? DateTimeOffset.UtcNow));
-    }
+    private static AlarmRouteKeys ToAlarmRoute(UnitRouteKeys route) =>
+        new(route.TenantId, route.UnitId, route.TenantKey, route.SiteKey, route.UnitKey);
 }

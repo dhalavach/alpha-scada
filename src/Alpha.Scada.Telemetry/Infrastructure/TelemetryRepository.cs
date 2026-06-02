@@ -5,9 +5,26 @@ using NpgsqlTypes;
 
 namespace Alpha.Scada.Telemetry.Infrastructure;
 
-public sealed class TelemetryRepository(NpgsqlDataSource dataSource)
+public sealed class TelemetryRepository
 {
-    public async Task IngestAsync(TelemetryIngestRequest request, CancellationToken cancellationToken)
+    private readonly NpgsqlDataSource dataSource;
+    private readonly DomainOutbox outbox;
+
+    public TelemetryRepository(NpgsqlDataSource dataSource, DomainOutbox outbox)
+    {
+        this.dataSource = dataSource;
+        this.outbox = outbox;
+    }
+
+    public TelemetryRepository(NpgsqlDataSource dataSource)
+        : this(dataSource, new DomainOutbox())
+    {
+    }
+
+    public async Task IngestAsync(
+        TelemetryIngestRequest request,
+        CancellationToken cancellationToken,
+        IReadOnlyCollection<object>? outboxMessages = null)
     {
         var count = request.Samples.Count;
         if (count == 0)
@@ -49,7 +66,8 @@ public sealed class TelemetryRepository(NpgsqlDataSource dataSource)
             on conflict (tag_id) do update
             set value_double = excluded.value_double,
                 quality = excluded.quality,
-                timestamp_utc = excluded.timestamp_utc;
+                timestamp_utc = excluded.timestamp_utc
+            where tag_current.timestamp_utc <= excluded.timestamp_utc;
             """, connection, tx);
         command.Parameters.AddWithValue("tenant_id", request.TenantId);
         command.Parameters.AddWithValue("unit_id", request.UnitId);
@@ -59,6 +77,12 @@ public sealed class TelemetryRepository(NpgsqlDataSource dataSource)
         command.Parameters.Add(new NpgsqlParameter("values", NpgsqlDbType.Array | NpgsqlDbType.Double) { Value = values });
         command.Parameters.Add(new NpgsqlParameter("qualities", NpgsqlDbType.Array | NpgsqlDbType.Text) { Value = qualities });
         await command.ExecuteNonQueryAsync(cancellationToken);
+
+        foreach (var message in outboxMessages ?? [])
+        {
+            await outbox.EnqueueAsync(connection, tx, message, cancellationToken);
+        }
+
         await tx.CommitAsync(cancellationToken);
     }
 

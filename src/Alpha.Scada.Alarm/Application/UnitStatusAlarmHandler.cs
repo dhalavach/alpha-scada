@@ -20,6 +20,11 @@ public sealed class UnitStatusAlarmHandler(AlarmService service)
             message.UnitName,
             string.Empty,
             message.Status,
-            message.LastSeenUtc), cancellationToken);
+            message.LastSeenUtc), new UnitRouteKeys(
+                message.TenantId,
+                message.UnitId,
+                message.TenantKey,
+                message.SiteKey,
+                message.UnitKey), cancellationToken);
     }
 }

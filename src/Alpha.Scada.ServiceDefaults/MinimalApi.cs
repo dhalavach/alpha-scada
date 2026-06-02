@@ -19,6 +19,7 @@ public static class MinimalApi
         var serviceLabel = EscapeLabel(serviceName);
         var outboxDepth = await CountIfTableExistsAsync(dataSource, "wolverine.wolverine_outgoing_envelopes", cancellationToken);
         var errorQueueDepth = await CountIfTableExistsAsync(dataSource, "wolverine.wolverine_dead_letters", cancellationToken);
+        var domainOutboxDepth = await CountIfTableExistsAsync(dataSource, "public.domain_outbox_messages", cancellationToken);
         var telemetrySamples = await CountIfTableExistsAsync(dataSource, "public.telemetry_samples", cancellationToken);
 
         var metrics = new StringBuilder();
@@ -34,6 +35,9 @@ public static class MinimalApi
         metrics.AppendLine("# HELP alpha_scada_wolverine_error_queue_depth Wolverine dead-lettered envelopes by service");
         metrics.AppendLine("# TYPE alpha_scada_wolverine_error_queue_depth gauge");
         metrics.AppendLine(CultureInfo.InvariantCulture, $"alpha_scada_wolverine_error_queue_depth{{service=\"{serviceLabel}\"}} {errorQueueDepth}");
+        metrics.AppendLine("# HELP alpha_scada_domain_outbox_depth Pending service-local domain outbox messages by service");
+        metrics.AppendLine("# TYPE alpha_scada_domain_outbox_depth gauge");
+        metrics.AppendLine(CultureInfo.InvariantCulture, $"alpha_scada_domain_outbox_depth{{service=\"{serviceLabel}\"}} {domainOutboxDepth}");
         metrics.AppendLine("# HELP alpha_scada_telemetry_samples_written_total Persisted telemetry samples visible to this service database");
         metrics.AppendLine("# TYPE alpha_scada_telemetry_samples_written_total counter");
         metrics.AppendLine(CultureInfo.InvariantCulture, $"alpha_scada_telemetry_samples_written_total{{service=\"{serviceLabel}\"}} {telemetrySamples}");
@@ -55,6 +59,7 @@ public static class MinimalApi
         {
             "wolverine.wolverine_outgoing_envelopes" => "select count(*) from wolverine.wolverine_outgoing_envelopes",
             "wolverine.wolverine_dead_letters" => "select count(*) from wolverine.wolverine_dead_letters",
+            "public.domain_outbox_messages" => "select count(*) from public.domain_outbox_messages where dispatched_at_utc is null",
             "public.telemetry_samples" => "select count(*) from public.telemetry_samples",
             _ => throw new ArgumentOutOfRangeException(nameof(tableName), tableName, "Unsupported metrics table.")
         };

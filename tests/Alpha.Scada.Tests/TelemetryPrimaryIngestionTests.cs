@@ -189,6 +189,7 @@ public sealed class TelemetryPrimaryIngestionTests
                 services.AddSingleton<TelemetryRepository>();
                 services.AddSingleton<CatalogCache>();
                 services.AddMemoryCache();
+                services.AddDomainOutbox();
                 services.AddHttpClient("tenant", client => client.BaseAddress = new Uri(catalogBaseAddress));
                 services.AddHttpClient("asset", client => client.BaseAddress = new Uri(catalogBaseAddress));
                 services.AddHttpClient("tagCatalog", client => client.BaseAddress = new Uri(catalogBaseAddress));

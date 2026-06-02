@@ -17,16 +17,23 @@ public static class PasswordHasher
 
     public static bool Verify(string password, string hash)
     {
-        var parts = hash.Split('.');
-        if (parts.Length != 4 || parts[0] != "pbkdf2-sha256")
+        try
+        {
+            var parts = hash.Split('.');
+            if (parts.Length != 4 || parts[0] != "pbkdf2-sha256")
+            {
+                return false;
+            }
+
+            var iterations = int.Parse(parts[1]);
+            var salt = Convert.FromBase64String(parts[2]);
+            var expected = Convert.FromBase64String(parts[3]);
+            var actual = Rfc2898DeriveBytes.Pbkdf2(password, salt, iterations, HashAlgorithmName.SHA256, expected.Length);
+            return CryptographicOperations.FixedTimeEquals(actual, expected);
+        }
+        catch (Exception ex) when (ex is FormatException or ArgumentException or CryptographicException or OverflowException)
         {
             return false;
         }
-
-        var iterations = int.Parse(parts[1]);
-        var salt = Convert.FromBase64String(parts[2]);
-        var expected = Convert.FromBase64String(parts[3]);
-        var actual = Rfc2898DeriveBytes.Pbkdf2(password, salt, iterations, HashAlgorithmName.SHA256, expected.Length);
-        return CryptographicOperations.FixedTimeEquals(actual, expected);
     }
 }
