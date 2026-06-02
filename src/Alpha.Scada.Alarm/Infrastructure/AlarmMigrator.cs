@@ -27,24 +27,6 @@ public sealed class AlarmMigrator(NpgsqlDataSource dataSource, ILogger<AlarmMigr
             create index if not exists ix_alarm_tenant_state on alarm_events(tenant_id, state);
             create index if not exists ix_alarm_unit_period on alarm_events(unit_id, raised_at_utc);
             create unique index if not exists ux_alarm_active_tag on alarm_events(tag_id) where state in ('active', 'acknowledged');
-
-            create table if not exists alarm_events_shadow (
-                id uuid primary key,
-                tenant_id uuid not null,
-                unit_id uuid not null,
-                tag_id uuid,
-                severity text not null,
-                message text not null,
-                state text not null,
-                raised_at_utc timestamptz not null,
-                acknowledged_at_utc timestamptz,
-                acknowledged_by_user_id uuid,
-                cleared_at_utc timestamptz
-            );
-
-            create index if not exists ix_alarm_shadow_tenant_state on alarm_events_shadow(tenant_id, state);
-            create index if not exists ix_alarm_shadow_unit_period on alarm_events_shadow(unit_id, raised_at_utc);
-            create unique index if not exists ux_alarm_shadow_active_tag on alarm_events_shadow(tag_id) where state in ('active', 'acknowledged');
             """, connection);
         await command.ExecuteNonQueryAsync(cancellationToken);
         logger.LogInformation("Alarm database is ready.");

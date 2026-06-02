@@ -9,19 +9,6 @@ public sealed class AlarmRepository(NpgsqlDataSource dataSource)
 {
     public async Task<AlarmChanges> EvaluateAsync(AlarmEvaluationRequest request, CancellationToken cancellationToken)
     {
-        return await EvaluateIntoAsync("alarm_events", request, cancellationToken);
-    }
-
-    public async Task<AlarmChanges> EvaluateShadowAsync(AlarmEvaluationRequest request, CancellationToken cancellationToken)
-    {
-        return await EvaluateIntoAsync("alarm_events_shadow", request, cancellationToken);
-    }
-
-    private async Task<AlarmChanges> EvaluateIntoAsync(
-        string tableName,
-        AlarmEvaluationRequest request,
-        CancellationToken cancellationToken)
-    {
         var alarmingTagIds = new List<Guid>();
         var severities = new List<string>();
         var messages = new List<string>();
@@ -57,8 +44,8 @@ public sealed class AlarmRepository(NpgsqlDataSource dataSource)
             // One active alarm per tag: the partial unique index on (tag_id) where state in
             // ('active','acknowledged') makes the de-duplication atomic, so do nothing when a tag
             // already has an open alarm (including duplicate tags within this batch).
-            await using var command = new NpgsqlCommand($"""
-                insert into {tableName} (id, tenant_id, unit_id, tag_id, severity, message, state, raised_at_utc)
+            await using var command = new NpgsqlCommand("""
+                insert into alarm_events (id, tenant_id, unit_id, tag_id, severity, message, state, raised_at_utc)
                 select gen_random_uuid(), @tenant_id, @unit_id, a.tag_id, a.severity, a.message, 'active', now()
                 from unnest(@tag_ids, @severities, @messages) as a(tag_id, severity, message)
                 on conflict (tag_id) where state in ('active', 'acknowledged') do nothing
@@ -74,8 +61,8 @@ public sealed class AlarmRepository(NpgsqlDataSource dataSource)
 
         if (clearingTagIds.Count > 0)
         {
-            await using var command = new NpgsqlCommand($"""
-                update {tableName}
+            await using var command = new NpgsqlCommand("""
+                update alarm_events
                 set state = 'cleared', cleared_at_utc = now()
                 where tag_id = any(@tag_ids) and state in ('active', 'acknowledged')
                 returning id, tenant_id, unit_id, tag_id, severity, message, state, raised_at_utc, acknowledged_at_utc, cleared_at_utc

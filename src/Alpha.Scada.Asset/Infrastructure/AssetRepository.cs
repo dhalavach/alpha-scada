@@ -1,5 +1,4 @@
 using Alpha.Scada.Contracts;
-using Alpha.Scada.Telemetry.Contracts;
 using Npgsql;
 
 namespace Alpha.Scada.Asset.Infrastructure;
@@ -119,29 +118,6 @@ public sealed class AssetRepository(NpgsqlDataSource dataSource)
             """, connection);
         command.Parameters.AddWithValue("minutes", minutes);
         return await ReadUnitsAsync(command, cancellationToken);
-    }
-
-    public async Task MarkShadowSeenAsync(TelemetryBatchStored message, CancellationToken cancellationToken)
-    {
-        var lastSeen = message.Samples.Count == 0
-            ? message.StoredAtUtc
-            : message.Samples.Max(sample => sample.SourceTimestampUtc);
-
-        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        await using var command = new NpgsqlCommand("""
-            insert into unit_last_seen_shadow (tenant_id, unit_id, tenant_key, site_key, unit_key, last_seen_utc, updated_at_utc)
-            values (@tenant_id, @unit_id, @tenant_key, @site_key, @unit_key, @last_seen_utc, now())
-            on conflict (unit_id) do update
-            set last_seen_utc = greatest(unit_last_seen_shadow.last_seen_utc, excluded.last_seen_utc),
-                updated_at_utc = now()
-            """, connection);
-        command.Parameters.AddWithValue("tenant_id", message.TenantId);
-        command.Parameters.AddWithValue("unit_id", message.UnitId);
-        command.Parameters.AddWithValue("tenant_key", message.TenantKey);
-        command.Parameters.AddWithValue("site_key", message.SiteKey);
-        command.Parameters.AddWithValue("unit_key", message.UnitKey);
-        command.Parameters.AddWithValue("last_seen_utc", lastSeen);
-        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     public async Task<IReadOnlyCollection<UnitDto>> GetStaleUnitsAsync(int minutes, CancellationToken cancellationToken)

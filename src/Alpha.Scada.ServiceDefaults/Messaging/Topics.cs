@@ -20,14 +20,10 @@ public static class Topics
     public static string TelemetryStored(string tenant, string site, string unit) =>
         $"alpha/{tenant}/{site}/{unit}/telemetry-stored";
 
-    public static string ShadowTelemetryStored(string tenant, string site, string unit) =>
-        $"alpha/_shadow/{tenant}/{site}/{unit}/telemetry-stored";
-
     public const string TelemetryWildcard = "alpha/+/+/+/telemetry";
     public const string StatusWildcard = "alpha/+/+/+/status";
     public const string AlarmWildcard = "alpha/+/+/+/alarm/+";
     public const string TelemetryStoredWildcard = "alpha/+/+/+/telemetry-stored";
-    public const string ShadowTelemetryStoredWildcard = "alpha/_shadow/+/+/+/telemetry-stored";
 
     public static string Dlq(string service, string originalTopic) =>
         $"alpha/_dlq/{service}/{originalTopic}";

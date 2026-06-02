@@ -8,20 +8,6 @@ public sealed class TelemetryRepository(NpgsqlDataSource dataSource)
 {
     public async Task IngestAsync(TelemetryIngestRequest request, CancellationToken cancellationToken)
     {
-        await IngestIntoAsync("telemetry_samples", "tag_current", request, cancellationToken);
-    }
-
-    public async Task IngestShadowAsync(TelemetryIngestRequest request, CancellationToken cancellationToken)
-    {
-        await IngestIntoAsync("telemetry_samples_shadow", "tag_current_shadow", request, cancellationToken);
-    }
-
-    private async Task IngestIntoAsync(
-        string samplesTable,
-        string currentTable,
-        TelemetryIngestRequest request,
-        CancellationToken cancellationToken)
-    {
         var count = request.Samples.Count;
         if (count == 0)
         {
@@ -47,14 +33,14 @@ public sealed class TelemetryRepository(NpgsqlDataSource dataSource)
 
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var tx = await connection.BeginTransactionAsync(cancellationToken);
-        await using var command = new NpgsqlCommand($"""
-            insert into {samplesTable} (tenant_id, unit_id, tag_id, tag_key, timestamp_utc, value_double, quality, source_timestamp_utc, received_at_utc)
+        await using var command = new NpgsqlCommand("""
+            insert into telemetry_samples (tenant_id, unit_id, tag_id, tag_key, timestamp_utc, value_double, quality, source_timestamp_utc, received_at_utc)
             select @tenant_id, @unit_id, s.tag_id, s.tag_key, s.timestamp_utc, s.value_double, s.quality, s.timestamp_utc, now()
             from unnest(@tag_ids, @tag_keys, @timestamps, @values, @qualities)
                 as s(tag_id, tag_key, timestamp_utc, value_double, quality)
             on conflict (tag_id, timestamp_utc) do nothing;
 
-            insert into {currentTable} (tenant_id, unit_id, tag_id, tag_key, value_double, quality, timestamp_utc)
+            insert into tag_current (tenant_id, unit_id, tag_id, tag_key, value_double, quality, timestamp_utc)
             select distinct on (s.tag_id) @tenant_id, @unit_id, s.tag_id, s.tag_key, s.value_double, s.quality, s.timestamp_utc
             from unnest(@tag_ids, @tag_keys, @timestamps, @values, @qualities)
                 as s(tag_id, tag_key, timestamp_utc, value_double, quality)
