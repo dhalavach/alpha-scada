@@ -33,6 +33,7 @@ public sealed class TelemetryMigrator(NpgsqlDataSource dataSource, ILogger<Telem
 
             create table if not exists telemetry_samples_default partition of telemetry_samples default;
             create index if not exists ix_telemetry_tenant_unit_time on telemetry_samples(tenant_id, unit_id, timestamp_utc desc);
+            create index if not exists ix_telemetry_unit_time on telemetry_samples(unit_id, timestamp_utc desc);
             """, connection);
         await command.ExecuteNonQueryAsync(cancellationToken);
         logger.LogInformation("Telemetry database is ready.");

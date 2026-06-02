@@ -1,4 +1,5 @@
 using Alpha.Scada.Contracts;
+using Alpha.Scada.ServiceDefaults;
 using Npgsql;
 using NpgsqlTypes;
 
@@ -115,12 +116,15 @@ public sealed class TelemetryRepository(NpgsqlDataSource dataSource)
 
     public async Task<ReportAggregateDto> GetReportAggregateAsync(Guid unitId, string period, CancellationToken cancellationToken)
     {
+        var range = MonthPeriod.Parse(period);
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var command = new NpgsqlCommand("""
             with minute_samples as (
                 select tag_key, date_trunc('minute', timestamp_utc) as minute_utc, avg(value_double) as value_avg
                 from telemetry_samples
-                where unit_id = @unit_id and to_char(timestamp_utc, 'YYYY-MM') = @period
+                where unit_id = @unit_id
+                  and timestamp_utc >= @period_start
+                  and timestamp_utc < @period_end
                 group by tag_key, date_trunc('minute', timestamp_utc)
             )
             select
@@ -131,7 +135,8 @@ public sealed class TelemetryRepository(NpgsqlDataSource dataSource)
             from minute_samples
             """, connection);
         command.Parameters.AddWithValue("unit_id", unitId);
-        command.Parameters.AddWithValue("period", period);
+        command.Parameters.AddWithValue("period_start", range.StartUtc);
+        command.Parameters.AddWithValue("period_end", range.EndUtc);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         await reader.ReadAsync(cancellationToken);
         return new ReportAggregateDto(

@@ -1,5 +1,6 @@
 using Alpha.Scada.Alarm.Domain;
 using Alpha.Scada.Contracts;
+using Alpha.Scada.ServiceDefaults;
 using Npgsql;
 using NpgsqlTypes;
 
@@ -125,14 +126,18 @@ public sealed class AlarmRepository(NpgsqlDataSource dataSource)
 
     public async Task<int> CountForUnitPeriodAsync(Guid unitId, string period, CancellationToken cancellationToken)
     {
+        var range = MonthPeriod.Parse(period);
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var command = new NpgsqlCommand("""
             select count(*)
             from alarm_events
-            where unit_id = @unit_id and to_char(raised_at_utc, 'YYYY-MM') = @period
+            where unit_id = @unit_id
+              and raised_at_utc >= @period_start
+              and raised_at_utc < @period_end
             """, connection);
         command.Parameters.AddWithValue("unit_id", unitId);
-        command.Parameters.AddWithValue("period", period);
+        command.Parameters.AddWithValue("period_start", range.StartUtc);
+        command.Parameters.AddWithValue("period_end", range.EndUtc);
         return Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken));
     }
 
