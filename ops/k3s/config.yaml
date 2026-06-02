@@ -19,3 +19,15 @@ metadata:
 type: Opaque
 stringData:
   Jwt__Secret: replace-with-generated-jwt-secret
+  MQTT_USER_GATEWAY: gateway
+  MQTT_PASSWORD_GATEWAY: replace-with-gateway-mqtt-password
+  MQTT_USER_ASSET: asset
+  MQTT_PASSWORD_ASSET: replace-with-asset-mqtt-password
+  MQTT_USER_TELEMETRY: telemetry
+  MQTT_PASSWORD_TELEMETRY: replace-with-telemetry-mqtt-password
+  MQTT_USER_ALARM: alarm
+  MQTT_PASSWORD_ALARM: replace-with-alarm-mqtt-password
+  MQTT_USER_EDGE: edge
+  MQTT_PASSWORD_EDGE: replace-with-edge-mqtt-password
+  Simulator__MqttUser: edge
+  Simulator__MqttPassword: replace-with-edge-mqtt-password
