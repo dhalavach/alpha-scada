@@ -138,35 +138,87 @@ public sealed class TelemetryRepository
         return results;
     }
 
-    public async Task<ReportAggregateDto> GetReportAggregateAsync(Guid unitId, string period, CancellationToken cancellationToken)
+    public async Task<ReportAggregateDto> GetReportAggregateAsync(Guid unitId, ReportAggregateRequest request, CancellationToken cancellationToken)
     {
-        var range = MonthPeriod.Parse(period);
+        ValidateReportBindings(request.MetricBindings);
+        var range = MonthPeriod.Parse(request.Period);
+        var bindings = request.MetricBindings.ToArray();
+        var metricKeys = bindings.Select(binding => binding.MetricKey).ToArray();
+        var tagIds = bindings.Select(binding => binding.TagId).ToArray();
+        var aggregationTypes = bindings.Select(binding => binding.AggregationType).ToArray();
+        var scales = bindings.Select(binding => binding.Scale).ToArray();
+        var thresholds = bindings.Select(binding => binding.Threshold ?? 0).ToArray();
+        var hasThresholds = bindings.Select(binding => binding.Threshold.HasValue).ToArray();
+
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var command = new NpgsqlCommand("""
-            with minute_samples as (
-                select tag_key, date_trunc('minute', timestamp_utc) as minute_utc, avg(value_double) as value_avg
+            with bindings as (
+                select *
+                from unnest(@metric_keys, @tag_ids, @aggregation_types, @scales, @thresholds, @has_thresholds)
+                    as b(metric_key, tag_id, aggregation_type, scale, threshold, has_threshold)
+            ),
+            minute_samples as (
+                select tag_id, date_trunc('minute', timestamp_utc) as minute_utc, avg(value_double) as value_avg
                 from telemetry_samples
                 where unit_id = @unit_id
                   and timestamp_utc >= @period_start
                   and timestamp_utc < @period_end
-                group by tag_key, date_trunc('minute', timestamp_utc)
+                  and tag_id = any(@tag_ids)
+                group by tag_id, date_trunc('minute', timestamp_utc)
             )
-            select
-                coalesce(sum(case when tag_key = 'engine.electrical_output_kw' then value_avg / 60.0 else 0 end), 0) as electrical_kwh,
-                coalesce(sum(case when tag_key = 'heat.thermal_output_kw' then value_avg / 60.0 else 0 end), 0) as thermal_kwh,
-                count(distinct minute_utc) / 60.0 as runtime_hours,
-                coalesce(sum(case when tag_key = 'fuel.wood_chip_feed_kg_h' then value_avg / 60.0 else 0 end), 0) as wood_kg
-            from minute_samples
+            select b.metric_key,
+                   case b.aggregation_type
+                       when 'sum_per_minute' then coalesce(sum(m.value_avg / 60.0 * b.scale), 0)
+                       when 'runtime_hours' then count(distinct m.minute_utc) filter (where not b.has_threshold or m.value_avg > b.threshold) / 60.0 * b.scale
+                   end as metric_value
+            from bindings b
+            left join minute_samples m on m.tag_id = b.tag_id
+            group by b.metric_key, b.aggregation_type, b.scale, b.threshold, b.has_threshold
             """, connection);
         command.Parameters.AddWithValue("unit_id", unitId);
         command.Parameters.AddWithValue("period_start", range.StartUtc);
         command.Parameters.AddWithValue("period_end", range.EndUtc);
+        command.Parameters.Add(new NpgsqlParameter("metric_keys", NpgsqlDbType.Array | NpgsqlDbType.Text) { Value = metricKeys });
+        command.Parameters.Add(new NpgsqlParameter("tag_ids", NpgsqlDbType.Array | NpgsqlDbType.Uuid) { Value = tagIds });
+        command.Parameters.Add(new NpgsqlParameter("aggregation_types", NpgsqlDbType.Array | NpgsqlDbType.Text) { Value = aggregationTypes });
+        command.Parameters.Add(new NpgsqlParameter("scales", NpgsqlDbType.Array | NpgsqlDbType.Double) { Value = scales });
+        command.Parameters.Add(new NpgsqlParameter("thresholds", NpgsqlDbType.Array | NpgsqlDbType.Double) { Value = thresholds });
+        command.Parameters.Add(new NpgsqlParameter("has_thresholds", NpgsqlDbType.Array | NpgsqlDbType.Boolean) { Value = hasThresholds });
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        await reader.ReadAsync(cancellationToken);
+        var valuesByMetric = new Dictionary<string, double>();
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            valuesByMetric[reader.GetString(0)] = reader.GetDouble(1);
+        }
+
         return new ReportAggregateDto(
-            Math.Round(reader.GetDouble(0), 1),
-            Math.Round(reader.GetDouble(1), 1),
-            Math.Round(reader.GetDouble(2), 1),
-            Math.Round(reader.GetDouble(3), 1));
+            Math.Round(valuesByMetric.GetValueOrDefault(ReportMetricKeys.ElectricalKwh), 1),
+            Math.Round(valuesByMetric.GetValueOrDefault(ReportMetricKeys.ThermalKwh), 1),
+            Math.Round(valuesByMetric.GetValueOrDefault(ReportMetricKeys.RuntimeHours), 1),
+            Math.Round(valuesByMetric.GetValueOrDefault(ReportMetricKeys.WoodChipsKg), 1));
+    }
+
+    private static void ValidateReportBindings(IReadOnlyCollection<ReportMetricBindingDto> bindings)
+    {
+        var missing = new[]
+        {
+            ReportMetricKeys.ElectricalKwh,
+            ReportMetricKeys.ThermalKwh,
+            ReportMetricKeys.RuntimeHours,
+            ReportMetricKeys.WoodChipsKg
+        }.Where(metric => bindings.All(binding => binding.MetricKey != metric)).ToArray();
+        if (missing.Length > 0)
+        {
+            throw new InvalidOperationException($"Report aggregate config is missing metric bindings: {string.Join(", ", missing)}.");
+        }
+
+        var unsupported = bindings
+            .Where(binding => binding.AggregationType is not ("sum_per_minute" or "runtime_hours"))
+            .Select(binding => $"{binding.MetricKey}:{binding.AggregationType}")
+            .ToArray();
+        if (unsupported.Length > 0)
+        {
+            throw new InvalidOperationException($"Report aggregate config contains unsupported aggregation types: {string.Join(", ", unsupported)}.");
+        }
     }
 }

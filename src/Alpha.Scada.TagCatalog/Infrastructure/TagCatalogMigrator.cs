@@ -24,8 +24,57 @@ public sealed class TagCatalogMigrator(NpgsqlDataSource dataSource, ILogger<TagC
             );
 
             create index if not exists ix_tags_tenant_unit on tags(tenant_id, unit_id);
+
+            create table if not exists report_metric_definitions (
+                metric_key text primary key,
+                display_name text not null,
+                aggregation_type text not null,
+                output_unit text not null,
+                default_scale double precision not null,
+                default_threshold double precision
+            );
+
+            create table if not exists report_profiles (
+                tenant_id uuid not null,
+                unit_id uuid not null,
+                availability_no_alarms_percent double precision not null,
+                availability_with_alarms_percent double precision not null,
+                biochar_yield_m3_per_kg double precision not null,
+                primary key (tenant_id, unit_id)
+            );
+
+            create table if not exists report_metric_bindings (
+                tenant_id uuid not null,
+                unit_id uuid not null,
+                metric_key text not null references report_metric_definitions(metric_key),
+                tag_id uuid not null references tags(id),
+                scale double precision,
+                threshold double precision,
+                primary key (tenant_id, unit_id, metric_key)
+            );
             """, connection);
         await command.ExecuteNonQueryAsync(cancellationToken);
+
+        foreach (var metric in ReportMetrics)
+        {
+            await using var definition = new NpgsqlCommand("""
+                insert into report_metric_definitions (metric_key, display_name, aggregation_type, output_unit, default_scale, default_threshold)
+                values (@metric_key, @display_name, @aggregation_type, @output_unit, @default_scale, @default_threshold)
+                on conflict (metric_key) do update
+                set display_name = excluded.display_name,
+                    aggregation_type = excluded.aggregation_type,
+                    output_unit = excluded.output_unit,
+                    default_scale = excluded.default_scale,
+                    default_threshold = excluded.default_threshold
+                """, connection);
+            definition.Parameters.AddWithValue("metric_key", metric.MetricKey);
+            definition.Parameters.AddWithValue("display_name", metric.DisplayName);
+            definition.Parameters.AddWithValue("aggregation_type", metric.AggregationType);
+            definition.Parameters.AddWithValue("output_unit", metric.OutputUnit);
+            definition.Parameters.AddWithValue("default_scale", metric.DefaultScale);
+            definition.Parameters.AddWithValue("default_threshold", (object?)metric.DefaultThreshold ?? DBNull.Value);
+            await definition.ExecuteNonQueryAsync(cancellationToken);
+        }
 
         foreach (var unit in Units)
         {
@@ -45,6 +94,31 @@ public sealed class TagCatalogMigrator(NpgsqlDataSource dataSource, ILogger<TagC
                 seed.Parameters.AddWithValue("alarm_low", (object?)tag.AlarmLow ?? DBNull.Value);
                 seed.Parameters.AddWithValue("alarm_high", (object?)tag.AlarmHigh ?? DBNull.Value);
                 await seed.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await using var profile = new NpgsqlCommand("""
+                insert into report_profiles (tenant_id, unit_id, availability_no_alarms_percent, availability_with_alarms_percent, biochar_yield_m3_per_kg)
+                values (@tenant_id, @unit_id, 99.5, 98.5, 0.00045)
+                on conflict (tenant_id, unit_id) do nothing
+                """, connection);
+            profile.Parameters.AddWithValue("tenant_id", unit.TenantId);
+            profile.Parameters.AddWithValue("unit_id", unit.UnitId);
+            await profile.ExecuteNonQueryAsync(cancellationToken);
+
+            foreach (var metric in ReportMetrics)
+            {
+                await using var binding = new NpgsqlCommand("""
+                    insert into report_metric_bindings (tenant_id, unit_id, metric_key, tag_id, scale, threshold)
+                    select @tenant_id, @unit_id, @metric_key, t.id, null, null
+                    from tags t
+                    where t.tenant_id = @tenant_id and t.unit_id = @unit_id and t.key = @tag_key
+                    on conflict (tenant_id, unit_id, metric_key) do nothing
+                    """, connection);
+                binding.Parameters.AddWithValue("tenant_id", unit.TenantId);
+                binding.Parameters.AddWithValue("unit_id", unit.UnitId);
+                binding.Parameters.AddWithValue("metric_key", metric.MetricKey);
+                binding.Parameters.AddWithValue("tag_key", metric.DefaultTagKey);
+                await binding.ExecuteNonQueryAsync(cancellationToken);
             }
         }
 
@@ -77,4 +151,21 @@ public sealed class TagCatalogMigrator(NpgsqlDataSource dataSource, ILogger<TagC
     ];
 
     private sealed record SeedTag(string Key, string Name, string Subsystem, string EngineeringUnit, double? AlarmLow, double? AlarmHigh);
+
+    private static readonly ReportMetricSeed[] ReportMetrics =
+    [
+        new("electrical_kwh", "Electrical energy", "sum_per_minute", "kWh", 1, null, "engine.electrical_output_kw"),
+        new("thermal_kwh", "Thermal energy", "sum_per_minute", "kWh", 1, null, "heat.thermal_output_kw"),
+        new("wood_chips_kg", "Wood-chip consumption", "sum_per_minute", "kg", 1, null, "fuel.wood_chip_feed_kg_h"),
+        new("runtime_hours", "Runtime hours", "runtime_hours", "h", 1, 0, "engine.electrical_output_kw")
+    ];
+
+    private sealed record ReportMetricSeed(
+        string MetricKey,
+        string DisplayName,
+        string AggregationType,
+        string OutputUnit,
+        double DefaultScale,
+        double? DefaultThreshold,
+        string DefaultTagKey);
 }

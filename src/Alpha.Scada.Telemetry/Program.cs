@@ -54,7 +54,7 @@ app.MapGet("/internal/v1/telemetry/tags/{tagId:guid}/history", async (Guid tagId
     return Results.Ok(await service.GetHistoryAsync(tagId, window, user, context.RequestAborted));
 });
 
-app.MapGet("/internal/v1/telemetry/units/{unitId:guid}/report-aggregate", async (Guid unitId, string period, TelemetryService service, CancellationToken cancellationToken) =>
-    Results.Ok(await service.GetReportAggregateAsync(unitId, period, cancellationToken)));
+app.MapPost("/internal/v1/telemetry/units/{unitId:guid}/report-aggregate", async (Guid unitId, ReportAggregateRequest request, TelemetryService service, CancellationToken cancellationToken) =>
+    Results.Ok(await service.GetReportAggregateAsync(unitId, request, cancellationToken)));
 
 app.Run();

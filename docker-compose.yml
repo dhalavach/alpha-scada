@@ -202,6 +202,7 @@ services:
       Services__Asset: http://asset:8080
       Services__Telemetry: http://telemetry:8080
       Services__Alarm: http://alarm:8080
+      Services__TagCatalog: http://tag-catalog:8080
     networks:
       - alpha-internal
     depends_on:
@@ -212,6 +213,8 @@ services:
       telemetry:
         condition: service_started
       alarm:
+        condition: service_started
+      tag-catalog:
         condition: service_started
 
   edge:

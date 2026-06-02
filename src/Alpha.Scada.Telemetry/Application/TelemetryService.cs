@@ -14,6 +14,6 @@ public sealed class TelemetryService(TelemetryRepository repository)
     public Task<IReadOnlyCollection<TelemetryHistoryPointDto>> GetHistoryAsync(Guid tagId, TimeSpan window, CurrentUserDto user, CancellationToken cancellationToken) =>
         repository.GetHistoryAsync(tagId, window, user, cancellationToken);
 
-    public Task<ReportAggregateDto> GetReportAggregateAsync(Guid unitId, string period, CancellationToken cancellationToken) =>
-        repository.GetReportAggregateAsync(unitId, period, cancellationToken);
+    public Task<ReportAggregateDto> GetReportAggregateAsync(Guid unitId, ReportAggregateRequest request, CancellationToken cancellationToken) =>
+        repository.GetReportAggregateAsync(unitId, request, cancellationToken);
 }

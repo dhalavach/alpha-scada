@@ -32,14 +32,24 @@ public sealed class ReportingService(
 
     private async Task<MonthlyReportDto> GenerateMonthlyAsync(Guid tenantId, Guid unitId, string period, CancellationToken cancellationToken)
     {
+        var profile = await httpClientFactory.CreateClient("tagCatalog")
+            .GetFromJsonAsync<ReportProfileDto>(
+                $"/internal/v1/report-config/units/{unitId}?tenantId={tenantId}",
+                cancellationToken)
+            ?? throw new InvalidOperationException($"Report profile for unit {unitId} is not configured.");
+
         var telemetry = httpClientFactory.CreateClient("telemetry");
-        var aggregate = await telemetry.GetFromJsonAsync<ReportAggregateDto>(
-            $"/internal/v1/telemetry/units/{unitId}/report-aggregate?period={period}",
-            cancellationToken) ?? new ReportAggregateDto(0, 0, 0, 0);
+        var aggregateResponse = await telemetry.PostAsJsonAsync(
+            $"/internal/v1/telemetry/units/{unitId}/report-aggregate",
+            new ReportAggregateRequest(period, profile.MetricBindings),
+            cancellationToken);
+        aggregateResponse.EnsureSuccessStatusCode();
+        var aggregate = await aggregateResponse.Content.ReadFromJsonAsync<ReportAggregateDto>(cancellationToken)
+            ?? throw new InvalidOperationException($"Telemetry aggregate for unit {unitId} was empty.");
 
         var alarm = httpClientFactory.CreateClient("alarm");
         var alarmCount = await alarm.GetFromJsonAsync<int>($"/internal/v1/alarms/count?unitId={unitId}&period={period}", cancellationToken);
-        var availability = alarmCount > 0 ? 98.5 : 99.5;
+        var availability = alarmCount > 0 ? profile.AvailabilityWithAlarmsPercent : profile.AvailabilityNoAlarmsPercent;
 
         var report = new MonthlyReportDto(
             Guid.Empty,
@@ -51,7 +61,7 @@ public sealed class ReportingService(
             aggregate.RuntimeHours,
             availability,
             aggregate.EstimatedWoodChipsKg,
-            Math.Round(aggregate.EstimatedWoodChipsKg * 0.00045, 2),
+            Math.Round(aggregate.EstimatedWoodChipsKg * profile.BiocharYieldM3PerKg, 2),
             alarmCount,
             DateTimeOffset.UtcNow);
 

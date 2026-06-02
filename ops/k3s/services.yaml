@@ -479,6 +479,8 @@ spec:
               value: http://telemetry:8080
             - name: Services__Alarm
               value: http://alarm:8080
+            - name: Services__TagCatalog
+              value: http://tag-catalog:8080
           ports:
             - containerPort: 8080
           readinessProbe:

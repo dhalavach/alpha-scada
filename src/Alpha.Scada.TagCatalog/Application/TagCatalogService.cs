@@ -10,4 +10,7 @@ public sealed class TagCatalogService(TagCatalogRepository repository)
 
     public Task<IReadOnlyCollection<TagDto>> ResolveTagsAsync(ResolveTagsRequest request, CancellationToken cancellationToken) =>
         repository.ResolveTagsAsync(request, cancellationToken);
+
+    public Task<ReportProfileDto?> GetReportProfileAsync(Guid tenantId, Guid unitId, CancellationToken cancellationToken) =>
+        repository.GetReportProfileAsync(tenantId, unitId, cancellationToken);
 }

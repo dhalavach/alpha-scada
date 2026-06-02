@@ -34,6 +34,67 @@ public sealed class TagCatalogRepository(NpgsqlDataSource dataSource)
         return await ReadTagsAsync(command, cancellationToken);
     }
 
+    public async Task<ReportProfileDto?> GetReportProfileAsync(Guid tenantId, Guid unitId, CancellationToken cancellationToken)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var profileCommand = new NpgsqlCommand("""
+            select availability_no_alarms_percent, availability_with_alarms_percent, biochar_yield_m3_per_kg
+            from report_profiles
+            where tenant_id = @tenant_id and unit_id = @unit_id
+            """, connection);
+        profileCommand.Parameters.AddWithValue("tenant_id", tenantId);
+        profileCommand.Parameters.AddWithValue("unit_id", unitId);
+
+        double availabilityNoAlarms;
+        double availabilityWithAlarms;
+        double biocharYield;
+        await using (var reader = await profileCommand.ExecuteReaderAsync(cancellationToken))
+        {
+            if (!await reader.ReadAsync(cancellationToken))
+            {
+                return null;
+            }
+
+            availabilityNoAlarms = reader.GetDouble(0);
+            availabilityWithAlarms = reader.GetDouble(1);
+            biocharYield = reader.GetDouble(2);
+        }
+
+        await using var bindingsCommand = new NpgsqlCommand("""
+            select b.metric_key,
+                   b.tag_id,
+                   d.aggregation_type,
+                   coalesce(b.scale, d.default_scale) as scale,
+                   coalesce(b.threshold, d.default_threshold) as threshold
+            from report_metric_bindings b
+            join report_metric_definitions d on d.metric_key = b.metric_key
+            where b.tenant_id = @tenant_id and b.unit_id = @unit_id
+            order by b.metric_key
+            """, connection);
+        bindingsCommand.Parameters.AddWithValue("tenant_id", tenantId);
+        bindingsCommand.Parameters.AddWithValue("unit_id", unitId);
+
+        var bindings = new List<ReportMetricBindingDto>();
+        await using var bindingsReader = await bindingsCommand.ExecuteReaderAsync(cancellationToken);
+        while (await bindingsReader.ReadAsync(cancellationToken))
+        {
+            bindings.Add(new ReportMetricBindingDto(
+                bindingsReader.GetString(0),
+                bindingsReader.GetGuid(1),
+                bindingsReader.GetString(2),
+                bindingsReader.GetDouble(3),
+                bindingsReader.IsDBNull(4) ? null : bindingsReader.GetDouble(4)));
+        }
+
+        return new ReportProfileDto(
+            tenantId,
+            unitId,
+            availabilityNoAlarms,
+            availabilityWithAlarms,
+            biocharYield,
+            bindings);
+    }
+
     private static async Task<IReadOnlyCollection<TagDto>> ReadTagsAsync(NpgsqlCommand command, CancellationToken cancellationToken)
     {
         var results = new List<TagDto>();

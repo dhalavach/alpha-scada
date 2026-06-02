@@ -30,4 +30,10 @@ app.MapGet("/internal/v1/units/{unitId:guid}/tags", async (Guid unitId, HttpCont
 app.MapPost("/internal/v1/tags/resolve", async (ResolveTagsRequest request, TagCatalogService service, CancellationToken cancellationToken) =>
     Results.Ok(await service.ResolveTagsAsync(request, cancellationToken)));
 
+app.MapGet("/internal/v1/report-config/units/{unitId:guid}", async (Guid unitId, Guid tenantId, TagCatalogService service, CancellationToken cancellationToken) =>
+{
+    var profile = await service.GetReportProfileAsync(tenantId, unitId, cancellationToken);
+    return profile is null ? Results.NotFound() : Results.Ok(profile);
+});
+
 app.Run();
