@@ -1,4 +1,3 @@
-using Alpha.Scada.Contracts;
 using Microsoft.AspNetCore.Http;
 using Npgsql;
 using System.Globalization;
@@ -8,12 +7,6 @@ namespace Alpha.Scada.ServiceDefaults;
 
 public static class MinimalApi
 {
-    public static IResult RequireUser(HttpContext context, JwtTokenService tokens, Func<CurrentUserDto, IResult> next)
-    {
-        var user = HttpUserContext.FromBearerToken(context.Request.Headers, tokens);
-        return user is null ? Results.Unauthorized() : next(user);
-    }
-
     public static async Task<IResult> ReadyAsync(NpgsqlDataSource dataSource, CancellationToken cancellationToken)
     {
         await Database.CanConnectAsync(dataSource, cancellationToken);
