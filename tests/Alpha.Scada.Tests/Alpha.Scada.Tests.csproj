@@ -26,7 +26,9 @@
     <ProjectReference Include="..\..\src\Alpha.Scada.Alarm\Alpha.Scada.Alarm.csproj" />
     <ProjectReference Include="..\..\src\Alpha.Scada.Asset.Contracts\Alpha.Scada.Asset.Contracts.csproj" />
     <ProjectReference Include="..\..\src\Alpha.Scada.Edge\Alpha.Scada.Edge.csproj" />
+    <ProjectReference Include="..\..\src\Alpha.Scada.Gateway\Alpha.Scada.Gateway.csproj" />
     <ProjectReference Include="..\..\src\Alpha.Scada.Identity\Alpha.Scada.Identity.csproj" />
+    <ProjectReference Include="..\..\src\Alpha.Scada.Reporting.Contracts\Alpha.Scada.Reporting.Contracts.csproj" />
     <ProjectReference Include="..\..\src\Alpha.Scada.ServiceDefaults\Alpha.Scada.ServiceDefaults.csproj" />
     <ProjectReference Include="..\..\src\Alpha.Scada.Telemetry.Contracts\Alpha.Scada.Telemetry.Contracts.csproj" />
     <ProjectReference Include="..\..\src\Alpha.Scada.Telemetry\Alpha.Scada.Telemetry.csproj" />

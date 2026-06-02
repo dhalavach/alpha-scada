@@ -7,11 +7,12 @@ namespace Alpha.Scada.Gateway.Application;
 public sealed class UnitStatusBroadcastHandler(IHubContext<TelemetryHub> hub)
 {
     public Task Handle(UnitStatusChanged message, CancellationToken cancellationToken) =>
-        hub.Clients.All.SendAsync("unitStatusChanged", new
-        {
-            message.TenantId,
-            message.UnitId,
-            message.Status,
-            message.LastSeenUtc
-        }, cancellationToken);
+        hub.Clients.Group(TelemetryHub.TenantGroup(message.TenantId))
+            .SendAsync("unitStatusChanged", new
+            {
+                message.TenantId,
+                message.UnitId,
+                message.Status,
+                message.LastSeenUtc
+            }, cancellationToken);
 }
