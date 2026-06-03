@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using Alpha.Scada.Contracts;
+using Alpha.Scada.ServiceDefaults;
 using Alpha.Scada.Telemetry.Contracts;
 using Microsoft.Extensions.Caching.Memory;
 
@@ -22,7 +23,7 @@ public sealed class ThresholdCache(IHttpClientFactory httpClientFactory, IMemory
             return cached;
         }
 
-        var response = await httpClientFactory.CreateClient("tagCatalog")
+        var response = await httpClientFactory.CreateClient(AlphaServiceClients.TagCatalog)
             .PostAsJsonAsync("/internal/v1/tags/resolve", new ResolveTagsRequest(tenantId, unitId, tagKeys), cancellationToken);
         response.EnsureSuccessStatusCode();
         var tags = await response.Content.ReadFromJsonAsync<IReadOnlyCollection<TagDto>>(cancellationToken) ?? [];

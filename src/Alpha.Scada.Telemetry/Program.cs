@@ -15,9 +15,11 @@ builder.Services.AddSingleton<TelemetryService>();
 builder.Services.AddSingleton<CatalogCache>();
 builder.Services.AddMemoryCache();
 builder.Services.AddHostedService<TelemetryEdgeIngestionWorker>();
-builder.Services.AddHttpClient("tenant", client => client.BaseAddress = new Uri(builder.Configuration["Services:Tenant"] ?? "http://localhost:5211")).AddAlphaResilience();
-builder.Services.AddHttpClient("asset", client => client.BaseAddress = new Uri(builder.Configuration["Services:Asset"] ?? "http://localhost:5212")).AddAlphaResilience();
-builder.Services.AddHttpClient("tagCatalog", client => client.BaseAddress = new Uri(builder.Configuration["Services:TagCatalog"] ?? "http://localhost:5213")).AddAlphaResilience();
+builder.Services.AddAlphaServiceClients(
+    builder.Configuration,
+    AlphaServiceClients.Tenant,
+    AlphaServiceClients.Asset,
+    AlphaServiceClients.TagCatalog);
 builder.Services.AddAlphaJwtAuthentication(builder.Configuration);
 builder.Host.UseAlphaMessaging(serviceName, MessagingTopology.Configure);
 

@@ -90,6 +90,35 @@ public sealed class ServiceDefaultsEndpointTests
         });
     }
 
+    [Fact]
+    public void Service_client_registration_uses_configured_endpoint_options()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Services:Asset"] = "http://asset:8080"
+            })
+            .Build();
+        using var provider = new ServiceCollection()
+            .AddAlphaServiceClients(configuration, AlphaServiceClients.Asset)
+            .BuildServiceProvider();
+
+        var client = provider.GetRequiredService<IHttpClientFactory>().CreateClient(AlphaServiceClients.Asset);
+
+        Assert.Equal(new Uri("http://asset:8080"), client.BaseAddress);
+    }
+
+    [Fact]
+    public void Service_client_registration_fails_fast_when_required_endpoint_is_missing()
+    {
+        var configuration = new ConfigurationBuilder().Build();
+
+        var error = Assert.Throws<InvalidOperationException>(() =>
+            new ServiceCollection().AddAlphaServiceClients(configuration, AlphaServiceClients.Asset));
+
+        Assert.Contains("Services:Asset", error.Message);
+    }
+
     private static async Task<(WebApplication App, string Token)> BuildAuthAppAsync(string role)
     {
         var configuration = ConfigurationWithSecret();

@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using Alpha.Scada.Contracts;
 using Alpha.Scada.Contracts.Messaging;
+using Alpha.Scada.ServiceDefaults;
 using Alpha.Scada.Telemetry.Application.Messaging;
 using Microsoft.Extensions.Caching.Memory;
 
@@ -66,7 +67,7 @@ public sealed class CatalogCache(IHttpClientFactory httpClientFactory, IMemoryCa
             return cached;
         }
 
-        var tenant = await httpClientFactory.CreateClient("tenant")
+        var tenant = await httpClientFactory.CreateClient(AlphaServiceClients.Tenant)
             .GetFromJsonAsync<TenantDto>($"/internal/v1/tenants/resolve/{tenantKey}", cancellationToken)
             ?? throw new InvalidOperationException($"Tenant {tenantKey} is not allow-listed.");
 
@@ -82,7 +83,7 @@ public sealed class CatalogCache(IHttpClientFactory httpClientFactory, IMemoryCa
             return cached;
         }
 
-        var unit = await httpClientFactory.CreateClient("asset")
+        var unit = await httpClientFactory.CreateClient(AlphaServiceClients.Asset)
             .GetFromJsonAsync<ResolvedUnitDto>(
                 $"/internal/v1/units/resolve?tenantId={tenantId}&siteKey={siteKey}&unitKey={unitKey}",
                 cancellationToken)
@@ -104,7 +105,7 @@ public sealed class CatalogCache(IHttpClientFactory httpClientFactory, IMemoryCa
             return cached;
         }
 
-        var response = await httpClientFactory.CreateClient("tagCatalog")
+        var response = await httpClientFactory.CreateClient(AlphaServiceClients.TagCatalog)
             .PostAsJsonAsync("/internal/v1/tags/resolve", new ResolveTagsRequest(tenantId, unitId, tagKeys), cancellationToken);
         response.EnsureSuccessStatusCode();
         var tags = await response.Content.ReadFromJsonAsync<IReadOnlyCollection<TagDto>>(cancellationToken) ?? [];

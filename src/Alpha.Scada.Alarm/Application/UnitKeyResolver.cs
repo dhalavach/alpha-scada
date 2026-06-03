@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using Alpha.Scada.Contracts;
+using Alpha.Scada.ServiceDefaults;
 using Microsoft.Extensions.Caching.Memory;
 
 namespace Alpha.Scada.Alarm.Application;
@@ -16,11 +17,11 @@ public sealed class UnitKeyResolver(IHttpClientFactory httpClientFactory, IMemor
             return cached;
         }
 
-        var asset = httpClientFactory.CreateClient("asset");
+        var asset = httpClientFactory.CreateClient(AlphaServiceClients.Asset);
         var route = await asset.GetFromJsonAsync<UnitRouteDto>($"/internal/v1/units/{unitId}/route", cancellationToken)
             ?? throw new InvalidOperationException($"Unit route {unitId} could not be resolved.");
 
-        var tenant = await httpClientFactory.CreateClient("tenant")
+        var tenant = await httpClientFactory.CreateClient(AlphaServiceClients.Tenant)
             .GetFromJsonAsync<TenantDto>($"/internal/v1/tenants/{route.TenantId}", cancellationToken)
             ?? throw new InvalidOperationException($"Tenant route {route.TenantId} could not be resolved.");
 

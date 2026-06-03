@@ -15,9 +15,11 @@ builder.Services.AddSingleton<AlarmService>();
 builder.Services.AddSingleton<UnitKeyResolver>();
 builder.Services.AddSingleton<ThresholdCache>();
 builder.Services.AddMemoryCache();
-builder.Services.AddHttpClient("asset", client => client.BaseAddress = new Uri(builder.Configuration["Services:Asset"] ?? "http://localhost:5212")).AddAlphaResilience();
-builder.Services.AddHttpClient("tenant", client => client.BaseAddress = new Uri(builder.Configuration["Services:Tenant"] ?? "http://localhost:5211")).AddAlphaResilience();
-builder.Services.AddHttpClient("tagCatalog", client => client.BaseAddress = new Uri(builder.Configuration["Services:TagCatalog"] ?? "http://localhost:5213")).AddAlphaResilience();
+builder.Services.AddAlphaServiceClients(
+    builder.Configuration,
+    AlphaServiceClients.Asset,
+    AlphaServiceClients.Tenant,
+    AlphaServiceClients.TagCatalog);
 builder.Services.AddAlphaJwtAuthentication(builder.Configuration);
 builder.Host.UseAlphaMessaging(serviceName, MessagingTopology.Configure);
 

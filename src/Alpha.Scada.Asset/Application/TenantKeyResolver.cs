@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using Alpha.Scada.Contracts;
+using Alpha.Scada.ServiceDefaults;
 using Microsoft.Extensions.Caching.Memory;
 
 namespace Alpha.Scada.Asset.Application;
@@ -16,7 +17,7 @@ public sealed class TenantKeyResolver(IHttpClientFactory httpClientFactory, IMem
             return cached;
         }
 
-        var tenant = await httpClientFactory.CreateClient("tenant")
+        var tenant = await httpClientFactory.CreateClient(AlphaServiceClients.Tenant)
             .GetFromJsonAsync<TenantDto>($"/internal/v1/tenants/{tenantId}", cancellationToken)
             ?? throw new InvalidOperationException($"Tenant {tenantId} could not be resolved.");
 

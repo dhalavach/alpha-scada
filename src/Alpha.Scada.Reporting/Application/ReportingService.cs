@@ -12,7 +12,7 @@ public sealed class ReportingService(
     public async Task<MonthlyReportDto> RunMonthlyAsync(ReportRunRequest request, CurrentUserDto user, string authorizationHeader, CancellationToken cancellationToken)
     {
         var period = string.IsNullOrWhiteSpace(request.Period) ? DateTimeOffset.UtcNow.ToString("yyyy-MM") : request.Period;
-        var asset = httpClientFactory.CreateClient("asset");
+        var asset = httpClientFactory.CreateClient(AlphaServiceClients.Asset);
         var unitRequest = new HttpRequestMessage(HttpMethod.Get, $"/internal/v1/units/{request.UnitId}");
         unitRequest.ForwardAuthorization(authorizationHeader);
         var unitResponse = await asset.SendAsync(unitRequest, cancellationToken);
@@ -32,13 +32,13 @@ public sealed class ReportingService(
 
     private async Task<MonthlyReportDto> GenerateMonthlyAsync(Guid tenantId, Guid unitId, string period, CancellationToken cancellationToken)
     {
-        var profile = await httpClientFactory.CreateClient("tagCatalog")
+        var profile = await httpClientFactory.CreateClient(AlphaServiceClients.TagCatalog)
             .GetFromJsonAsync<ReportProfileDto>(
                 $"/internal/v1/report-config/units/{unitId}?tenantId={tenantId}",
                 cancellationToken)
             ?? throw new InvalidOperationException($"Report profile for unit {unitId} is not configured.");
 
-        var telemetry = httpClientFactory.CreateClient("telemetry");
+        var telemetry = httpClientFactory.CreateClient(AlphaServiceClients.Telemetry);
         var aggregateResponse = await telemetry.PostAsJsonAsync(
             $"/internal/v1/telemetry/units/{unitId}/report-aggregate",
             new ReportAggregateRequest(period, profile.MetricBindings),
@@ -47,7 +47,7 @@ public sealed class ReportingService(
         var aggregate = await aggregateResponse.Content.ReadFromJsonAsync<ReportAggregateDto>(cancellationToken)
             ?? throw new InvalidOperationException($"Telemetry aggregate for unit {unitId} was empty.");
 
-        var alarm = httpClientFactory.CreateClient("alarm");
+        var alarm = httpClientFactory.CreateClient(AlphaServiceClients.Alarm);
         var alarmCount = await alarm.GetFromJsonAsync<int>($"/internal/v1/alarms/count?unitId={unitId}&period={period}", cancellationToken);
         var availability = alarmCount > 0 ? profile.AvailabilityWithAlarmsPercent : profile.AvailabilityNoAlarmsPercent;
 

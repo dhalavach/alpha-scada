@@ -162,9 +162,11 @@ public sealed class TelemetryPrimaryIngestionTests
                 services.AddSingleton<CatalogCache>();
                 services.AddMemoryCache();
                 services.AddHostedService<TelemetryEdgeIngestionWorker>();
-                services.AddHttpClient("tenant", client => client.BaseAddress = new Uri(catalogBaseAddress));
-                services.AddHttpClient("asset", client => client.BaseAddress = new Uri(catalogBaseAddress));
-                services.AddHttpClient("tagCatalog", client => client.BaseAddress = new Uri(catalogBaseAddress));
+                services.AddAlphaServiceClients(
+                    context.Configuration,
+                    AlphaServiceClients.Tenant,
+                    AlphaServiceClients.Asset,
+                    AlphaServiceClients.TagCatalog);
             })
             .UseAlphaMessaging("telemetry-primary-test", options =>
             {
