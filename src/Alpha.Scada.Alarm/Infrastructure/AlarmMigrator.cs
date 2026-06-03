@@ -7,7 +7,6 @@ public sealed class AlarmMigrator(NpgsqlDataSource dataSource, ILogger<AlarmMigr
     public async Task MigrateAsync(CancellationToken cancellationToken)
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        await Alpha.Scada.ServiceDefaults.DomainOutbox.EnsureSchemaAsync(connection, cancellationToken);
         await using var command = new NpgsqlCommand("""
             create extension if not exists pgcrypto;
 

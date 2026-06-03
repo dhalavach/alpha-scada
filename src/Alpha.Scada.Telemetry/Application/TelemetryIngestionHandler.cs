@@ -10,6 +10,7 @@ namespace Alpha.Scada.Telemetry.Application;
 public sealed class TelemetryIngestionHandler(
     CatalogCache catalog,
     TelemetryRepository repository,
+    IMessageBus bus,
     ILogger<TelemetryIngestionHandler> logger)
 {
     public async Task Handle(TelemetryEnvelopeV1 envelope, Envelope messageEnvelope, CancellationToken cancellationToken)
@@ -43,10 +44,8 @@ public sealed class TelemetryIngestionHandler(
                 sample.Quality,
                 sample.SourceTimestampUtc)).ToArray());
 
-        await repository.IngestAsync(
-            new(batch.TenantId, batch.UnitId, batch.Samples),
-            cancellationToken,
-            [stored]);
+        await repository.IngestAsync(new(batch.TenantId, batch.UnitId, batch.Samples), cancellationToken);
+        await bus.PublishAsync(stored);
     }
 
     private void EnsureSupportedSchema(string schemaVersion)

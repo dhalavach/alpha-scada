@@ -8,23 +8,15 @@ namespace Alpha.Scada.Telemetry.Infrastructure;
 public sealed class TelemetryRepository
 {
     private readonly NpgsqlDataSource dataSource;
-    private readonly DomainOutbox outbox;
-
-    public TelemetryRepository(NpgsqlDataSource dataSource, DomainOutbox outbox)
-    {
-        this.dataSource = dataSource;
-        this.outbox = outbox;
-    }
 
     public TelemetryRepository(NpgsqlDataSource dataSource)
-        : this(dataSource, new DomainOutbox())
     {
+        this.dataSource = dataSource;
     }
 
     public async Task IngestAsync(
         TelemetryIngestRequest request,
-        CancellationToken cancellationToken,
-        IReadOnlyCollection<object>? outboxMessages = null)
+        CancellationToken cancellationToken)
     {
         var count = request.Samples.Count;
         if (count == 0)
@@ -77,11 +69,6 @@ public sealed class TelemetryRepository
         command.Parameters.Add(new NpgsqlParameter("values", NpgsqlDbType.Array | NpgsqlDbType.Double) { Value = values });
         command.Parameters.Add(new NpgsqlParameter("qualities", NpgsqlDbType.Array | NpgsqlDbType.Text) { Value = qualities });
         await command.ExecuteNonQueryAsync(cancellationToken);
-
-        foreach (var message in outboxMessages ?? [])
-        {
-            await outbox.EnqueueAsync(connection, tx, message, cancellationToken);
-        }
 
         await tx.CommitAsync(cancellationToken);
     }

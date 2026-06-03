@@ -158,7 +158,6 @@ public sealed class CommunicationLossAlarmTests
                 services.AddSingleton<AlarmService>();
                 services.AddSingleton<UnitKeyResolver>();
                 services.AddMemoryCache();
-                services.AddDomainOutbox();
                 services.AddHttpClient("asset", client => client.BaseAddress = new Uri(routeBaseAddress));
                 services.AddHttpClient("tenant", client => client.BaseAddress = new Uri(routeBaseAddress));
             })

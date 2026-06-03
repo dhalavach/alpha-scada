@@ -60,30 +60,24 @@ public sealed class AssetRepositoryBehaviorTests
     }
 
     [Fact]
-    public async Task Stale_units_can_be_detected_and_marked_offline_with_outbox_events()
+    public async Task Stale_units_can_be_detected_and_marked_offline()
     {
         await WithPostgresAsync(async connectionString =>
         {
             await using var dataSource = NpgsqlDataSource.Create(connectionString);
             await new AssetMigrator(dataSource, NullLogger<AssetMigrator>.Instance).MigrateAsync(CancellationToken.None);
-            var repository = new AssetRepository(dataSource, new DomainOutbox());
+            var repository = new AssetRepository(dataSource);
             await MakeUnitStaleAsync(connectionString, UnitId);
 
             var stale = await repository.GetStaleUnitsAsync(2, CancellationToken.None);
-            var changed = await repository.MarkStaleUnitsOfflineAsync(
-                2,
-                new Dictionary<Guid, string> { [TenantId] = "demo-operator" },
-                CancellationToken.None);
-            var changedAgain = await repository.MarkStaleUnitsOfflineAsync(
-                2,
-                new Dictionary<Guid, string> { [TenantId] = "demo-operator" },
-                CancellationToken.None);
+            var changed = await repository.MarkStaleUnitsOfflineAsync(2, CancellationToken.None);
+            var changedAgain = await repository.MarkStaleUnitsOfflineAsync(2, CancellationToken.None);
 
             Assert.Single(stale);
             Assert.Single(changed);
             Assert.Empty(changedAgain);
-            Assert.Equal("offline", changed.Single().Status);
-            Assert.Equal(1, await CountPendingOutboxAsync(connectionString));
+            Assert.Equal("offline", changed.Single().Unit.Status);
+            Assert.Equal("demo-energy-site", changed.Single().SiteKey);
         });
     }
 
@@ -106,16 +100,6 @@ public sealed class AssetRepositoryBehaviorTests
             """, connection);
         command.Parameters.AddWithValue("unit_id", unitId);
         await command.ExecuteNonQueryAsync();
-    }
-
-    private static async Task<int> CountPendingOutboxAsync(string connectionString)
-    {
-        await using var connection = new NpgsqlConnection(connectionString);
-        await connection.OpenAsync();
-        await using var command = new NpgsqlCommand(
-            "select count(*) from domain_outbox_messages where dispatched_at_utc is null",
-            connection);
-        return Convert.ToInt32(await command.ExecuteScalarAsync());
     }
 
     private static async Task WithPostgresAsync(Func<string, Task> run)

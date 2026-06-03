@@ -10,23 +10,13 @@ namespace Alpha.Scada.Alarm.Infrastructure;
 public sealed class AlarmRepository
 {
     private readonly NpgsqlDataSource dataSource;
-    private readonly DomainOutbox outbox;
-
-    public AlarmRepository(NpgsqlDataSource dataSource, DomainOutbox outbox)
-    {
-        this.dataSource = dataSource;
-        this.outbox = outbox;
-    }
 
     public AlarmRepository(NpgsqlDataSource dataSource)
-        : this(dataSource, new DomainOutbox())
     {
+        this.dataSource = dataSource;
     }
 
-    public async Task<AlarmChanges> EvaluateAsync(
-        AlarmEvaluationRequest request,
-        AlarmRouteKeys? route,
-        CancellationToken cancellationToken)
+    public async Task<AlarmChanges> EvaluateAsync(AlarmEvaluationRequest request, CancellationToken cancellationToken)
     {
         var alarmingTagIds = new List<Guid>();
         var severities = new List<string>();
@@ -77,23 +67,6 @@ public sealed class AlarmRepository
             command.Parameters.Add(new NpgsqlParameter("messages", NpgsqlDbType.Array | NpgsqlDbType.Text) { Value = messages.ToArray() });
             raised.AddRange(await ReadAlarmsAsync(command, cancellationToken));
 
-            if (route is not null)
-            {
-                foreach (var alarm in raised)
-                {
-                    await outbox.EnqueueAsync(connection, tx, new AlarmRaised(
-                        alarm.Id,
-                        alarm.TenantId,
-                        alarm.UnitId,
-                        alarm.TagId,
-                        route.TenantKey,
-                        route.SiteKey,
-                        route.UnitKey,
-                        alarm.Severity,
-                        alarm.Message,
-                        alarm.RaisedAtUtc), cancellationToken);
-                }
-            }
         }
 
         if (clearingTagIds.Count > 0)
@@ -107,31 +80,13 @@ public sealed class AlarmRepository
             command.Parameters.Add(new NpgsqlParameter("tag_ids", NpgsqlDbType.Array | NpgsqlDbType.Uuid) { Value = clearingTagIds.ToArray() });
             cleared.AddRange(await ReadAlarmsAsync(command, cancellationToken));
 
-            if (route is not null)
-            {
-                foreach (var alarm in cleared)
-                {
-                    await outbox.EnqueueAsync(connection, tx, new AlarmCleared(
-                        alarm.Id,
-                        alarm.TenantId,
-                        alarm.UnitId,
-                        alarm.TagId,
-                        route.TenantKey,
-                        route.SiteKey,
-                        route.UnitKey,
-                        alarm.ClearedAtUtc ?? DateTimeOffset.UtcNow), cancellationToken);
-                }
-            }
         }
 
         await tx.CommitAsync(cancellationToken);
         return new AlarmChanges(raised, cleared);
     }
 
-    public Task<AlarmChanges> EvaluateAsync(AlarmEvaluationRequest request, CancellationToken cancellationToken) =>
-        EvaluateAsync(request, null, cancellationToken);
-
-    public async Task<AlarmDto?> RaiseCommunicationLostAsync(UnitDto unit, AlarmRouteKeys? route, CancellationToken cancellationToken)
+    public async Task<AlarmDto?> RaiseCommunicationLostAsync(UnitDto unit, CancellationToken cancellationToken)
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var tx = await connection.BeginTransactionAsync(cancellationToken);
@@ -149,27 +104,9 @@ public sealed class AlarmRepository
         command.Parameters.AddWithValue("message", $"{unit.Name} communication lost");
         var alarm = await ReadAlarmAsync(command, cancellationToken);
 
-        if (alarm is not null && route is not null)
-        {
-            await outbox.EnqueueAsync(connection, tx, new AlarmRaised(
-                alarm.Id,
-                alarm.TenantId,
-                alarm.UnitId,
-                alarm.TagId,
-                route.TenantKey,
-                route.SiteKey,
-                route.UnitKey,
-                alarm.Severity,
-                alarm.Message,
-                alarm.RaisedAtUtc), cancellationToken);
-        }
-
         await tx.CommitAsync(cancellationToken);
         return alarm;
     }
-
-    public Task<AlarmDto?> RaiseCommunicationLostAsync(UnitDto unit, CancellationToken cancellationToken) =>
-        RaiseCommunicationLostAsync(unit, null, cancellationToken);
 
     public async Task<IReadOnlyCollection<AlarmDto>> GetActiveAsync(CurrentUserDto user, CancellationToken cancellationToken)
     {
@@ -199,7 +136,7 @@ public sealed class AlarmRepository
         return await ReadAlarmAsync(command, cancellationToken);
     }
 
-    public async Task<AlarmDto?> AcknowledgeAsync(Guid alarmId, CurrentUserDto user, AlarmRouteKeys? route, CancellationToken cancellationToken)
+    public async Task<AlarmDto?> AcknowledgeAsync(Guid alarmId, CurrentUserDto user, CancellationToken cancellationToken)
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var tx = await connection.BeginTransactionAsync(cancellationToken);
@@ -215,26 +152,9 @@ public sealed class AlarmRepository
         command.Parameters.AddWithValue("is_support", RoleRules.IsSupport(user.Role));
         var alarm = await ReadAlarmAsync(command, cancellationToken);
 
-        if (alarm is not null && route is not null)
-        {
-            await outbox.EnqueueAsync(connection, tx, new AlarmAcknowledged(
-                alarm.Id,
-                alarm.TenantId,
-                alarm.UnitId,
-                alarm.TagId,
-                route.TenantKey,
-                route.SiteKey,
-                route.UnitKey,
-                user.UserId,
-                alarm.AcknowledgedAtUtc ?? DateTimeOffset.UtcNow), cancellationToken);
-        }
-
         await tx.CommitAsync(cancellationToken);
         return alarm;
     }
-
-    public Task<AlarmDto?> AcknowledgeAsync(Guid alarmId, CurrentUserDto user, CancellationToken cancellationToken) =>
-        AcknowledgeAsync(alarmId, user, null, cancellationToken);
 
     public async Task<int> CountForUnitPeriodAsync(Guid unitId, string period, CancellationToken cancellationToken)
     {

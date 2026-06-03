@@ -51,7 +51,7 @@ public sealed class ReportOntologyConfigTests
         {
             await using var dataSource = NpgsqlDataSource.Create(connectionString);
             await new TelemetryMigrator(dataSource, NullLogger<TelemetryMigrator>.Instance).MigrateAsync(CancellationToken.None);
-            var repository = new TelemetryRepository(dataSource, new DomainOutbox());
+            var repository = new TelemetryRepository(dataSource);
             var electricalTagId = Guid.NewGuid();
             var alternateElectricalTagId = Guid.NewGuid();
             var thermalTagId = Guid.NewGuid();

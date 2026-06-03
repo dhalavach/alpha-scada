@@ -1,14 +1,17 @@
 using Alpha.Scada.Alarm.Infrastructure;
+using Alpha.Scada.Alarm.Contracts;
 using Alpha.Scada.Contracts;
+using Wolverine;
 
 namespace Alpha.Scada.Alarm.Application;
 
-public sealed class AlarmService(AlarmRepository repository, UnitKeyResolver unitKeyResolver)
+public sealed class AlarmService(AlarmRepository repository, UnitKeyResolver unitKeyResolver, IMessageBus bus)
 {
     public async Task EvaluateAsync(AlarmEvaluationRequest request, CancellationToken cancellationToken)
     {
         var route = await ResolveRouteAsync(request.UnitId, cancellationToken);
-        await repository.EvaluateAsync(request, route, cancellationToken);
+        var changes = await repository.EvaluateAsync(request, cancellationToken);
+        await PublishAlarmChangesAsync(changes, route, cancellationToken);
     }
 
     public async Task RaiseCommunicationLostAsync(UnitDto unit, UnitRouteKeys? knownRoute, CancellationToken cancellationToken)
@@ -16,7 +19,11 @@ public sealed class AlarmService(AlarmRepository repository, UnitKeyResolver uni
         var route = knownRoute is null
             ? await ResolveRouteAsync(unit.Id, cancellationToken)
             : ToAlarmRoute(knownRoute);
-        await repository.RaiseCommunicationLostAsync(unit, route, cancellationToken);
+        var alarm = await repository.RaiseCommunicationLostAsync(unit, cancellationToken);
+        if (alarm is not null)
+        {
+            await PublishRaisedAsync(alarm, route, cancellationToken);
+        }
     }
 
     public Task RaiseCommunicationLostAsync(UnitDto unit, CancellationToken cancellationToken) =>
@@ -34,7 +41,23 @@ public sealed class AlarmService(AlarmRepository repository, UnitKeyResolver uni
         }
 
         var route = await ResolveRouteAsync(existing.UnitId, cancellationToken);
-        return await repository.AcknowledgeAsync(alarmId, user, route, cancellationToken) is not null;
+        var alarm = await repository.AcknowledgeAsync(alarmId, user, cancellationToken);
+        if (alarm is null)
+        {
+            return false;
+        }
+
+        await bus.PublishAsync(new AlarmAcknowledged(
+            alarm.Id,
+            alarm.TenantId,
+            alarm.UnitId,
+            alarm.TagId,
+            route.TenantKey,
+            route.SiteKey,
+            route.UnitKey,
+            user.UserId,
+            alarm.AcknowledgedAtUtc ?? DateTimeOffset.UtcNow));
+        return true;
     }
 
     public Task<int> CountForUnitPeriodAsync(Guid unitId, string period, CancellationToken cancellationToken) =>
@@ -45,4 +68,38 @@ public sealed class AlarmService(AlarmRepository repository, UnitKeyResolver uni
 
     private static AlarmRouteKeys ToAlarmRoute(UnitRouteKeys route) =>
         new(route.TenantId, route.UnitId, route.TenantKey, route.SiteKey, route.UnitKey);
+
+    private async Task PublishAlarmChangesAsync(AlarmChanges changes, AlarmRouteKeys route, CancellationToken cancellationToken)
+    {
+        foreach (var alarm in changes.Raised)
+        {
+            await PublishRaisedAsync(alarm, route, cancellationToken);
+        }
+
+        foreach (var alarm in changes.Cleared)
+        {
+            await bus.PublishAsync(new AlarmCleared(
+                alarm.Id,
+                alarm.TenantId,
+                alarm.UnitId,
+                alarm.TagId,
+                route.TenantKey,
+                route.SiteKey,
+                route.UnitKey,
+                alarm.ClearedAtUtc ?? DateTimeOffset.UtcNow));
+        }
+    }
+
+    private Task PublishRaisedAsync(AlarmDto alarm, AlarmRouteKeys route, CancellationToken cancellationToken) =>
+        bus.PublishAsync(new AlarmRaised(
+            alarm.Id,
+            alarm.TenantId,
+            alarm.UnitId,
+            alarm.TagId,
+            route.TenantKey,
+            route.SiteKey,
+            route.UnitKey,
+            alarm.Severity,
+            alarm.Message,
+            alarm.RaisedAtUtc)).AsTask();
 }

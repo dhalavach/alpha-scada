@@ -1,10 +1,11 @@
 using Alpha.Scada.Asset.Contracts;
 using Alpha.Scada.Asset.Infrastructure;
 using Alpha.Scada.Contracts;
+using Wolverine;
 
 namespace Alpha.Scada.Asset.Application;
 
-public sealed class AssetService(AssetRepository repository, TenantKeyResolver tenantKeyResolver)
+public sealed class AssetService(AssetRepository repository, TenantKeyResolver tenantKeyResolver, IMessageBus bus)
 {
     public Task<IReadOnlyCollection<SiteDto>> GetSitesAsync(CurrentUserDto user, CancellationToken cancellationToken) =>
         repository.GetSitesAsync(user, cancellationToken);
@@ -32,7 +33,11 @@ public sealed class AssetService(AssetRepository repository, TenantKeyResolver t
             route = new UnitStatusRoute(tenantKey, unitRoute.SiteKey, unitRoute.UnitKey);
         }
 
-        await repository.SetUnitOnlineAsync(unitId, route, cancellationToken);
+        var unit = await repository.SetUnitOnlineAsync(unitId, cancellationToken);
+        if (unit is not null)
+        {
+            await PublishStatusChangedAsync(unit, route, cancellationToken);
+        }
     }
 
     public Task SetUnitOnlineAsync(Guid unitId, CancellationToken cancellationToken) =>
@@ -40,17 +45,32 @@ public sealed class AssetService(AssetRepository repository, TenantKeyResolver t
 
     public async Task<IReadOnlyCollection<UnitDto>> MarkStaleUnitsOfflineAsync(int minutes, CancellationToken cancellationToken)
     {
-        var candidates = await repository.GetStaleUnitsAsync(minutes, cancellationToken);
-        var tenantKeys = new Dictionary<Guid, string>();
-        foreach (var tenantId in candidates.Select(unit => unit.TenantId).Distinct())
+        var changed = await repository.MarkStaleUnitsOfflineAsync(minutes, cancellationToken);
+        foreach (var changedUnit in changed)
         {
-            tenantKeys[tenantId] = await tenantKeyResolver.ResolveAsync(tenantId, cancellationToken);
+            var tenantKey = await tenantKeyResolver.ResolveAsync(changedUnit.Unit.TenantId, cancellationToken);
+            await PublishStatusChangedAsync(
+                changedUnit.Unit,
+                new UnitStatusRoute(tenantKey, changedUnit.SiteKey, changedUnit.Unit.Key),
+                cancellationToken);
         }
 
-        return await repository.MarkStaleUnitsOfflineAsync(minutes, tenantKeys, cancellationToken);
+        return changed.Select(unit => unit.Unit).ToArray();
     }
 
     public Task<IReadOnlyCollection<UnitDto>> GetStaleUnitsAsync(int minutes, CancellationToken cancellationToken) =>
         repository.GetStaleUnitsAsync(minutes, cancellationToken);
 
+    private Task PublishStatusChangedAsync(UnitDto unit, UnitStatusRoute route, CancellationToken cancellationToken) =>
+        bus.PublishAsync(new UnitStatusChanged(
+            unit.TenantId,
+            unit.SiteId,
+            unit.Id,
+            route.TenantKey,
+            route.SiteKey,
+            route.UnitKey,
+            unit.Name,
+            unit.Status,
+            DateTimeOffset.UtcNow,
+            unit.LastSeenUtc)).AsTask();
 }

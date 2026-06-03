@@ -8,17 +8,10 @@ namespace Alpha.Scada.Asset.Infrastructure;
 public sealed class AssetRepository
 {
     private readonly NpgsqlDataSource dataSource;
-    private readonly DomainOutbox outbox;
-
-    public AssetRepository(NpgsqlDataSource dataSource, DomainOutbox outbox)
-    {
-        this.dataSource = dataSource;
-        this.outbox = outbox;
-    }
 
     public AssetRepository(NpgsqlDataSource dataSource)
-        : this(dataSource, new DomainOutbox())
     {
+        this.dataSource = dataSource;
     }
 
     public async Task<IReadOnlyCollection<SiteDto>> GetSitesAsync(CurrentUserDto user, CancellationToken cancellationToken)
@@ -105,41 +98,24 @@ public sealed class AssetRepository
             : null;
     }
 
-    public async Task<UnitDto?> SetUnitOnlineAsync(
-        Guid unitId,
-        UnitStatusRoute? route,
-        CancellationToken cancellationToken)
+    public async Task<UnitDto?> SetUnitOnlineAsync(Guid unitId, CancellationToken cancellationToken)
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        await using var tx = await connection.BeginTransactionAsync(cancellationToken);
         await using var command = new NpgsqlCommand("""
             update units
             set status = 'online', last_seen_utc = now()
             where id = @unit_id
             returning id, tenant_id, site_id, key, name, model, status, last_seen_utc
-            """, connection, tx);
+            """, connection);
         command.Parameters.AddWithValue("unit_id", unitId);
-        var unit = (await ReadUnitsAsync(command, cancellationToken)).FirstOrDefault();
-
-        if (unit is not null && route is not null)
-        {
-            await EnqueueStatusChangedAsync(connection, tx, unit, route, cancellationToken);
-        }
-
-        await tx.CommitAsync(cancellationToken);
-        return unit;
+        return (await ReadUnitsAsync(command, cancellationToken)).FirstOrDefault();
     }
 
-    public Task<UnitDto?> SetUnitOnlineAsync(Guid unitId, CancellationToken cancellationToken) =>
-        SetUnitOnlineAsync(unitId, null, cancellationToken);
-
-    public async Task<IReadOnlyCollection<UnitDto>> MarkStaleUnitsOfflineAsync(
+    public async Task<IReadOnlyCollection<UnitStatusChange>> MarkStaleUnitsOfflineAsync(
         int minutes,
-        IReadOnlyDictionary<Guid, string> tenantKeys,
         CancellationToken cancellationToken)
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        await using var tx = await connection.BeginTransactionAsync(cancellationToken);
         await using var command = new NpgsqlCommand("""
             with changed as (
                 update units u
@@ -152,13 +128,13 @@ public sealed class AssetRepository
             )
             select id, tenant_id, site_id, key, name, model, status, last_seen_utc, site_key
             from changed
-            """, connection, tx);
+            """, connection);
         command.Parameters.AddWithValue("minutes", minutes);
-        var changed = new List<UnitWithSiteKey>();
+        var changed = new List<UnitStatusChange>();
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
-            changed.Add(new UnitWithSiteKey(
+            changed.Add(new UnitStatusChange(
                 new UnitDto(
                     reader.GetGuid(0),
                     reader.GetGuid(1),
@@ -171,34 +147,8 @@ public sealed class AssetRepository
                 reader.GetString(8)));
         }
 
-        await reader.DisposeAsync();
-
-        foreach (var changedUnit in changed)
-        {
-            if (tenantKeys.Count == 0)
-            {
-                continue;
-            }
-
-            if (!tenantKeys.TryGetValue(changedUnit.Unit.TenantId, out var tenantKey))
-            {
-                throw new InvalidOperationException($"Tenant key {changedUnit.Unit.TenantId} could not be resolved for status event.");
-            }
-
-            await EnqueueStatusChangedAsync(
-                connection,
-                tx,
-                changedUnit.Unit,
-                new UnitStatusRoute(tenantKey, changedUnit.SiteKey, changedUnit.Unit.Key),
-                cancellationToken);
-        }
-
-        await tx.CommitAsync(cancellationToken);
-        return changed.Select(unit => unit.Unit).ToArray();
+        return changed;
     }
-
-    public Task<IReadOnlyCollection<UnitDto>> MarkStaleUnitsOfflineAsync(int minutes, CancellationToken cancellationToken) =>
-        MarkStaleUnitsOfflineAsync(minutes, new Dictionary<Guid, string>(), cancellationToken);
 
     public async Task<IReadOnlyCollection<UnitDto>> GetStaleUnitsAsync(int minutes, CancellationToken cancellationToken)
     {
@@ -232,27 +182,7 @@ public sealed class AssetRepository
         return results;
     }
 
-    private async Task EnqueueStatusChangedAsync(
-        NpgsqlConnection connection,
-        NpgsqlTransaction tx,
-        UnitDto unit,
-        UnitStatusRoute route,
-        CancellationToken cancellationToken)
-    {
-        await outbox.EnqueueAsync(connection, tx, new UnitStatusChanged(
-            unit.TenantId,
-            unit.SiteId,
-            unit.Id,
-            route.TenantKey,
-            route.SiteKey,
-            route.UnitKey,
-            unit.Name,
-            unit.Status,
-            DateTimeOffset.UtcNow,
-            unit.LastSeenUtc), cancellationToken);
-    }
-
-    private sealed record UnitWithSiteKey(UnitDto Unit, string SiteKey);
+    public sealed record UnitStatusChange(UnitDto Unit, string SiteKey);
 }
 
 public sealed record UnitStatusRoute(string TenantKey, string SiteKey, string UnitKey);

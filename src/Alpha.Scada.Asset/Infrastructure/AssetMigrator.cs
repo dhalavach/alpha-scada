@@ -7,7 +7,6 @@ public sealed class AssetMigrator(NpgsqlDataSource dataSource, ILogger<AssetMigr
     public async Task MigrateAsync(CancellationToken cancellationToken)
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        await Alpha.Scada.ServiceDefaults.DomainOutbox.EnsureSchemaAsync(connection, cancellationToken);
         await using var command = new NpgsqlCommand("""
             create table if not exists sites (
                 id uuid primary key,

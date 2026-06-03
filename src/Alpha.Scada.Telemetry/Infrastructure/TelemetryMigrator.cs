@@ -7,7 +7,6 @@ public sealed class TelemetryMigrator(NpgsqlDataSource dataSource, ILogger<Telem
     public async Task MigrateAsync(CancellationToken cancellationToken)
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        await Alpha.Scada.ServiceDefaults.DomainOutbox.EnsureSchemaAsync(connection, cancellationToken);
         await using var command = new NpgsqlCommand("""
             create table if not exists tag_current (
                 tenant_id uuid not null,

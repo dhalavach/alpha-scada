@@ -122,21 +122,11 @@ public sealed class BackendRepositoryTests
     }
 
     [Fact]
-    public async Task Metrics_endpoint_reports_outbox_depth_after_schema_exists()
+    public async Task Metrics_endpoint_reports_wolverine_depth()
     {
         await WithPostgresAsync(async connectionString =>
         {
             await using var dataSource = NpgsqlDataSource.Create(connectionString);
-            await using (var connection = await dataSource.OpenConnectionAsync())
-            {
-                await DomainOutbox.EnsureSchemaAsync(connection, CancellationToken.None);
-                await using var insert = new NpgsqlCommand("""
-                    insert into domain_outbox_messages (id, message_type, payload)
-                    values (gen_random_uuid(), 'message', '{}'::jsonb)
-                    """, connection);
-                await insert.ExecuteNonQueryAsync();
-            }
-
             var result = await MinimalApi.MetricsAsync("alpha-test-service", dataSource, CancellationToken.None);
             var context = new DefaultHttpContext();
             using var provider = new ServiceCollection().AddLogging().BuildServiceProvider();
@@ -147,7 +137,7 @@ public sealed class BackendRepositoryTests
             var text = await new StreamReader(context.Response.Body).ReadToEndAsync();
 
             Assert.Contains("alpha_scada_service_up", text);
-            Assert.Contains("alpha_scada_domain_outbox_depth{service=\"alpha-test-service\"} 1", text);
+            Assert.Contains("alpha_scada_wolverine_outbox_depth", text);
         });
     }
 
