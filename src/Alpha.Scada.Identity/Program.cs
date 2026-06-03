@@ -2,25 +2,20 @@ using Alpha.Scada.Contracts;
 using Alpha.Scada.Identity.Application;
 using Alpha.Scada.Identity.Infrastructure;
 using Alpha.Scada.ServiceDefaults;
-using Npgsql;
 
 const string serviceName = "alpha-scada-identity";
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddServiceDatabase(builder.Configuration);
-builder.Services.AddSingleton<IdentityMigrator>();
+builder.Services.AddAlphaMigrator<IdentityMigrator>();
 builder.Services.AddSingleton<IdentityRepository>();
-builder.Services.AddJwtTokenService(builder.Configuration);
+builder.Services.AddAlphaJwtAuthentication(builder.Configuration);
 builder.Services.AddSingleton<AuthService>();
 
 var app = builder.Build();
-await app.Services.GetRequiredService<IdentityMigrator>().MigrateAsync(CancellationToken.None);
-
-app.MapGet("/health", () => Results.Ok(new { status = "ok", service = serviceName, utc = DateTimeOffset.UtcNow }));
-app.MapGet("/ready", (Npgsql.NpgsqlDataSource dataSource, CancellationToken cancellationToken) =>
-    MinimalApi.ReadyAsync(dataSource, cancellationToken));
-app.MapGet("/metrics", (Npgsql.NpgsqlDataSource dataSource, CancellationToken cancellationToken) =>
-    MinimalApi.MetricsAsync(serviceName, dataSource, cancellationToken));
+await app.ApplyAlphaMigrationsAsync();
+app.UseAlphaAuthorization();
+app.MapAlphaOperationalEndpoints(serviceName);
 
 app.MapPost("/internal/v1/auth/login", async (LoginRequest request, AuthService auth, CancellationToken cancellationToken) =>
 {
@@ -28,15 +23,17 @@ app.MapPost("/internal/v1/auth/login", async (LoginRequest request, AuthService 
     return response is null ? Results.Unauthorized() : Results.Ok(response);
 });
 
-app.MapPost("/internal/v1/auth/logout", async (HttpContext context, JwtTokenService tokens, IdentityRepository repository) =>
-{
-    var user = HttpUserContext.FromBearerToken(context.Request.Headers, tokens);
-    if (user is not null)
+app.MapGroup("/internal/v1")
+    .RequireAuthorization()
+    .MapPost("/auth/logout", async (AuthenticatedUser user, IdentityRepository repository, HttpContext context) =>
     {
-        await repository.WriteAuditAsync(user.TenantId, user.UserId, "auth.logout", "User logged out", context.RequestAborted);
-    }
-
-    return Results.NoContent();
-});
+        await repository.WriteAuditAsync(
+            user.Current.TenantId,
+            user.Current.UserId,
+            "auth.logout",
+            "User logged out",
+            context.RequestAborted);
+        return Results.NoContent();
+    });
 
 app.Run();

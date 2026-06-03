@@ -1,13 +1,14 @@
+using Alpha.Scada.ServiceDefaults;
 using Npgsql;
 
 namespace Alpha.Scada.Edge.Infrastructure;
 
-public sealed class EdgeMigrator(NpgsqlDataSource dataSource, ILogger<EdgeMigrator> logger)
+public sealed class EdgeMigrator(NpgsqlDataSource dataSource, ILogger<EdgeMigrator> logger) :
+    SqlDatabaseMigrator(dataSource, logger)
 {
-    public async Task MigrateAsync(CancellationToken cancellationToken)
-    {
-        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        await using var command = new NpgsqlCommand("""
+    protected override IReadOnlyList<SqlMigration> Migrations { get; } =
+    [
+        new("001_initial", """
             create extension if not exists pgcrypto;
 
             create table if not exists edge_devices (
@@ -20,8 +21,6 @@ public sealed class EdgeMigrator(NpgsqlDataSource dataSource, ILogger<EdgeMigrat
                 last_seen_utc timestamptz,
                 unique (tenant_id, key)
             );
-            """, connection);
-        await command.ExecuteNonQueryAsync(cancellationToken);
-        logger.LogInformation("Edge database is ready.");
-    }
+            """)
+    ];
 }

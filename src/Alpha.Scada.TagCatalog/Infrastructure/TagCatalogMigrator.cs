@@ -1,13 +1,14 @@
+using Alpha.Scada.ServiceDefaults;
 using Npgsql;
 
 namespace Alpha.Scada.TagCatalog.Infrastructure;
 
-public sealed class TagCatalogMigrator(NpgsqlDataSource dataSource, ILogger<TagCatalogMigrator> logger)
+public sealed class TagCatalogMigrator(NpgsqlDataSource dataSource, ILogger<TagCatalogMigrator> logger) :
+    SqlDatabaseMigrator(dataSource, logger)
 {
-    public async Task MigrateAsync(CancellationToken cancellationToken)
-    {
-        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        await using var command = new NpgsqlCommand("""
+    protected override IReadOnlyList<SqlMigration> Migrations { get; } =
+    [
+        new("001_initial", """
             create extension if not exists pgcrypto;
 
             create table if not exists tags (
@@ -52,9 +53,11 @@ public sealed class TagCatalogMigrator(NpgsqlDataSource dataSource, ILogger<TagC
                 threshold double precision,
                 primary key (tenant_id, unit_id, metric_key)
             );
-            """, connection);
-        await command.ExecuteNonQueryAsync(cancellationToken);
+            """)
+    ];
 
+    protected override async Task SeedAsync(NpgsqlConnection connection, CancellationToken cancellationToken)
+    {
         foreach (var metric in ReportMetrics)
         {
             await using var definition = new NpgsqlCommand("""
@@ -121,8 +124,6 @@ public sealed class TagCatalogMigrator(NpgsqlDataSource dataSource, ILogger<TagC
                 await binding.ExecuteNonQueryAsync(cancellationToken);
             }
         }
-
-        logger.LogInformation("Tag catalog database is ready.");
     }
 
     private static readonly (Guid TenantId, Guid UnitId)[] Units =

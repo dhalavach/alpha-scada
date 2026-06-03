@@ -6,9 +6,9 @@ metadata:
 data:
   ASPNETCORE_URLS: http://+:8080
   Region: EU
-  Mqtt__Enabled: "true"
-  Mqtt__Host: mosquitto
-  Mqtt__Port: "1883"
+  Nats__Url: nats://nats:4222
+  EdgeMqtt__Host: nats
+  EdgeMqtt__Port: "1883"
   Simulator__Enabled: "false"
 ---
 apiVersion: v1
@@ -19,15 +19,9 @@ metadata:
 type: Opaque
 stringData:
   Jwt__Secret: replace-with-generated-jwt-secret
-  MQTT_USER_GATEWAY: gateway
-  MQTT_PASSWORD_GATEWAY: replace-with-gateway-mqtt-password
-  MQTT_USER_ASSET: asset
-  MQTT_PASSWORD_ASSET: replace-with-asset-mqtt-password
-  MQTT_USER_TELEMETRY: telemetry
-  MQTT_PASSWORD_TELEMETRY: replace-with-telemetry-mqtt-password
-  MQTT_USER_ALARM: alarm
-  MQTT_PASSWORD_ALARM: replace-with-alarm-mqtt-password
-  MQTT_USER_EDGE: edge
-  MQTT_PASSWORD_EDGE: replace-with-edge-mqtt-password
+  Nats__User: services
+  Nats__Password: services-pass
+  NATS_USER_EDGE: edge
+  NATS_PASSWORD_EDGE: edge-pass
   Simulator__MqttUser: edge
-  Simulator__MqttPassword: replace-with-edge-mqtt-password
+  Simulator__MqttPassword: edge-pass

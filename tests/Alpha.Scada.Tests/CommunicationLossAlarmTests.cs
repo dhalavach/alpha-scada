@@ -16,12 +16,9 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using MQTTnet;
-using MQTTnet.Client;
-using MQTTnet.Protocol;
 using Npgsql;
 using Wolverine;
-using Wolverine.MQTT;
+using Wolverine.Nats;
 using Xunit.Sdk;
 
 namespace Alpha.Scada.Tests;
@@ -39,13 +36,6 @@ public sealed class CommunicationLossAlarmTests
         Directory.CreateDirectory(tempDir);
         try
         {
-            await File.WriteAllTextAsync(Path.Combine(tempDir, "mosquitto.conf"), """
-                listener 1883
-                allow_anonymous true
-                persistence false
-                log_dest stdout
-                """);
-
             var postgres = new ContainerBuilder()
                 .WithImage("postgres:16-alpine")
                 .WithEnvironment("POSTGRES_DB", "alpha_test")
@@ -55,77 +45,53 @@ public sealed class CommunicationLossAlarmTests
                 .WithWaitStrategy(Wait.ForUnixContainer().UntilInternalTcpPortIsAvailable(5432))
                 .Build();
 
-            var mosquitto = new ContainerBuilder()
-                .WithImage("eclipse-mosquitto:2")
-                .WithBindMount(tempDir, "/mosquitto/config", AccessMode.ReadOnly)
-                .WithPortBinding(1883, true)
-                .WithCommand("mosquitto", "-c", "/mosquitto/config/mosquitto.conf")
-                .WithWaitStrategy(Wait.ForUnixContainer().UntilInternalTcpPortIsAvailable(1883))
-                .Build();
-
+            IContainer nats;
             try
             {
                 await postgres.StartAsync();
-                await mosquitto.StartAsync();
+                nats = await NatsTestSupport.StartAsync(tempDir);
             }
             catch (DockerUnavailableException ex)
             {
                 await postgres.DisposeAsync();
-                await mosquitto.DisposeAsync();
                 throw SkipException.ForSkip($"Docker is not available for communication-loss integration test: {ex.Message}");
             }
 
             await using (postgres)
-            await using (mosquitto)
+            await using (nats)
             await using (var catalog = await FakeRouteServer.StartAsync())
             {
                 var connectionString =
                     $"Host={postgres.Hostname};Port={postgres.GetMappedPublicPort(5432)};Database=alpha_test;Username=alpha;Password=alpha-pass";
                 await WaitForPostgresAsync(connectionString);
 
-                var factory = new MqttFactory();
-                using var subscriber = factory.CreateMqttClient();
-                var receivedTopic = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
-                subscriber.ApplicationMessageReceivedAsync += args =>
-                {
-                    receivedTopic.TrySetResult(args.ApplicationMessage.Topic);
-                    return Task.CompletedTask;
-                };
-
-                await subscriber.ConnectAsync(
-                    new MqttClientOptionsBuilder()
-                        .WithTcpServer(mosquitto.Hostname, mosquitto.GetMappedPublicPort(1883))
-                        .WithClientId($"comm-loss-subscriber-{Guid.NewGuid():N}")
-                        .Build());
-                await subscriber.SubscribeAsync(
-                    new MqttClientSubscribeOptionsBuilder()
-                        .WithTopicFilter("alpha/demo-operator/demo-site/chp-001/alarm/raised", MqttQualityOfServiceLevel.AtLeastOnce, false, false, MqttRetainHandling.SendAtSubscribe)
-                        .Build());
+                var natsUrl = NatsTestSupport.Url(nats);
+                var alarmSubject = Topics.AlarmRaisedEvent;
+                var received = NatsTestSupport.WaitForSubjectAsync(natsUrl, alarmSubject, TimeSpan.FromSeconds(10));
 
                 using var host = BuildAlarmHost(
                     connectionString,
-                    mosquitto.Hostname,
-                    mosquitto.GetMappedPublicPort(1883),
+                    natsUrl,
                     catalog.BaseAddress);
 
                 await host.Services.GetRequiredService<AlarmMigrator>().MigrateAsync(CancellationToken.None);
                 await host.StartAsync();
+                await Task.Delay(250);
 
-                await host.Services.GetRequiredService<Wolverine.IMessageBus>().PublishAsync(new UnitStatusChanged(
-                    TenantId,
-                    SiteId,
-                    UnitId,
-                    "demo-operator",
-                    "demo-site",
-                    "chp-001",
-                    "Combined Heat and Power Unit 001",
-                    "offline",
-                    DateTimeOffset.UtcNow,
-                    DateTimeOffset.UtcNow.Subtract(TimeSpan.FromMinutes(5))));
+                await host.Services.GetRequiredService<Wolverine.IMessageBus>().PublishAsync(
+                    new UnitStatusChanged(
+                        TenantId,
+                        SiteId,
+                        UnitId,
+                        "demo-operator",
+                        "demo-site",
+                        "chp-001",
+                        "Combined Heat and Power Unit 001",
+                        "offline",
+                        DateTimeOffset.UtcNow,
+                        DateTimeOffset.UtcNow.Subtract(TimeSpan.FromMinutes(5))));
 
-                Assert.Equal(
-                    "alpha/demo-operator/demo-site/chp-001/alarm/raised",
-                    await receivedTopic.Task.WaitAsync(TimeSpan.FromSeconds(10)));
+                Assert.Equal(alarmSubject, await received);
                 Assert.Equal(1, await CountRowsAsync(connectionString, "alarm_events"));
 
                 await host.StopAsync();
@@ -137,13 +103,12 @@ public sealed class CommunicationLossAlarmTests
         }
     }
 
-    private static IHost BuildAlarmHost(string connectionString, string mqttHost, int mqttPort, string routeBaseAddress)
+    private static IHost BuildAlarmHost(string connectionString, string natsUrl, string routeBaseAddress)
     {
         var settings = new Dictionary<string, string?>
         {
             ["ConnectionStrings:Postgres"] = connectionString,
-            ["Mqtt:Host"] = mqttHost,
-            ["Mqtt:Port"] = mqttPort.ToString(),
+            ["Nats:Url"] = natsUrl,
             ["Services:Asset"] = routeBaseAddress,
             ["Services:Tenant"] = routeBaseAddress
         };
@@ -164,11 +129,9 @@ public sealed class CommunicationLossAlarmTests
             .UseAlphaMessaging("comm-loss-test", options =>
             {
                 options.Discovery.IncludeAssembly(typeof(UnitStatusAlarmHandler).Assembly);
-                options.ListenToMqttTopic(Topics.StatusWildcard);
-                options.PublishMessagesToMqttTopic<UnitStatusChanged>(message =>
-                    Topics.Status(message.TenantKey, message.SiteKey, message.UnitKey));
-                options.PublishMessagesToMqttTopic<AlarmRaised>(message =>
-                    Topics.AlarmRaised(message.TenantKey, message.SiteKey, message.UnitKey));
+                options.PublishMessage<UnitStatusChanged>().ToNatsSubject(Topics.StatusChangedEvent).UseJetStream(Topics.DomainStream);
+                options.PublishMessage<AlarmRaised>().ToNatsSubject(Topics.AlarmRaisedEvent).UseJetStream(Topics.DomainStream);
+                options.ListenToNatsSubject(Topics.StatusChangedEvent).UseJetStream(Topics.DomainStream, "comm-loss-test-status");
             })
             .Build();
     }

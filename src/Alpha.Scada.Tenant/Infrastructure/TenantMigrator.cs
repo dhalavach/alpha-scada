@@ -1,13 +1,14 @@
+using Alpha.Scada.ServiceDefaults;
 using Npgsql;
 
 namespace Alpha.Scada.Tenant.Infrastructure;
 
-public sealed class TenantMigrator(NpgsqlDataSource dataSource, ILogger<TenantMigrator> logger)
+public sealed class TenantMigrator(NpgsqlDataSource dataSource, ILogger<TenantMigrator> logger) :
+    SqlDatabaseMigrator(dataSource, logger)
 {
-    public async Task MigrateAsync(CancellationToken cancellationToken)
-    {
-        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        await using var command = new NpgsqlCommand("""
+    protected override IReadOnlyList<SqlMigration> Migrations { get; } =
+    [
+        new("001_initial", """
             create table if not exists tenants (
                 id uuid primary key,
                 key text not null unique,
@@ -21,8 +22,6 @@ public sealed class TenantMigrator(NpgsqlDataSource dataSource, ILogger<TenantMi
               ('10000000-0000-0000-0000-000000000001', 'demo-operator', 'Demo Operator', 'EU'),
               ('10000000-0000-0000-0000-000000000002', 'field-operator', 'Field Operator', 'EU')
             on conflict (id) do nothing;
-            """, connection);
-        await command.ExecuteNonQueryAsync(cancellationToken);
-        logger.LogInformation("Tenant database is ready.");
-    }
+            """)
+    ];
 }

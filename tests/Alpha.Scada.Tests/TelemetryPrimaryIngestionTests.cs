@@ -22,7 +22,7 @@ using MQTTnet;
 using MQTTnet.Client;
 using MQTTnet.Protocol;
 using Npgsql;
-using Wolverine.MQTT;
+using Wolverine.Nats;
 using Xunit.Sdk;
 
 namespace Alpha.Scada.Tests;
@@ -41,13 +41,6 @@ public sealed class TelemetryPrimaryIngestionTests
         Directory.CreateDirectory(tempDir);
         try
         {
-            await File.WriteAllTextAsync(Path.Combine(tempDir, "mosquitto.conf"), """
-                listener 1883
-                allow_anonymous true
-                persistence false
-                log_dest stdout
-                """);
-
             var postgres = new ContainerBuilder()
                 .WithImage("postgres:16-alpine")
                 .WithEnvironment("POSTGRES_DB", "alpha_test")
@@ -57,62 +50,44 @@ public sealed class TelemetryPrimaryIngestionTests
                 .WithWaitStrategy(Wait.ForUnixContainer().UntilInternalTcpPortIsAvailable(5432))
                 .Build();
 
-            var mosquitto = new ContainerBuilder()
-                .WithImage("eclipse-mosquitto:2")
-                .WithBindMount(tempDir, "/mosquitto/config", AccessMode.ReadOnly)
-                .WithPortBinding(1883, true)
-                .WithCommand("mosquitto", "-c", "/mosquitto/config/mosquitto.conf")
-                .WithWaitStrategy(Wait.ForUnixContainer().UntilInternalTcpPortIsAvailable(1883))
-                .Build();
-
+            IContainer nats;
             try
             {
                 await postgres.StartAsync();
-                await mosquitto.StartAsync();
+                nats = await NatsTestSupport.StartAsync(tempDir);
             }
             catch (DockerUnavailableException ex)
             {
                 await postgres.DisposeAsync();
-                await mosquitto.DisposeAsync();
                 throw SkipException.ForSkip($"Docker is not available for telemetry primary integration test: {ex.Message}");
             }
 
             await using (postgres)
-            await using (mosquitto)
+            await using (nats)
             await using (var catalog = await FakeCatalogServer.StartAsync())
             {
                 var connectionString =
                     $"Host={postgres.Hostname};Port={postgres.GetMappedPublicPort(5432)};Database=alpha_test;Username=alpha;Password=alpha-pass";
                 await WaitForPostgresAsync(connectionString);
 
-                var factory = new MqttFactory();
-                using var subscriber = factory.CreateMqttClient();
-                var receivedTopic = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
-                subscriber.ApplicationMessageReceivedAsync += args =>
-                {
-                    receivedTopic.TrySetResult(args.ApplicationMessage.Topic);
-                    return Task.CompletedTask;
-                };
-
-                await subscriber.ConnectAsync(new MqttClientOptionsBuilder()
-                    .WithClientId($"telemetry-primary-subscriber-{Guid.NewGuid():N}")
-                    .WithTcpServer(mosquitto.Hostname, mosquitto.GetMappedPublicPort(1883))
-                    .Build());
-                await subscriber.SubscribeAsync(Subscribe(Topics.TelemetryStoredWildcard));
+                var natsUrl = NatsTestSupport.Url(nats);
+                var storedSubject = Topics.TelemetryStoredEvent;
+                var received = NatsTestSupport.WaitForSubjectAsync(natsUrl, storedSubject, TimeSpan.FromSeconds(10));
 
                 using var host = BuildTelemetryHost(
                     connectionString,
-                    mosquitto.Hostname,
-                    mosquitto.GetMappedPublicPort(1883),
+                    natsUrl,
                     catalog.BaseAddress);
 
                 await host.Services.GetRequiredService<TelemetryMigrator>().MigrateAsync(CancellationToken.None);
                 await host.StartAsync();
+                await Task.Delay(250);
 
+                var factory = new MqttFactory();
                 using var publisher = factory.CreateMqttClient();
                 await publisher.ConnectAsync(new MqttClientOptionsBuilder()
                     .WithClientId($"telemetry-primary-publisher-{Guid.NewGuid():N}")
-                    .WithTcpServer(mosquitto.Hostname, mosquitto.GetMappedPublicPort(1883))
+                    .WithTcpServer(nats.Hostname, NatsTestSupport.MqttPort(nats))
                     .Build());
 
                 var timestamp = DateTimeOffset.UtcNow;
@@ -125,14 +100,12 @@ public sealed class TelemetryPrimaryIngestionTests
                     new JsonSerializerOptions(JsonSerializerDefaults.Web));
 
                 await publisher.PublishAsync(new MqttApplicationMessageBuilder()
-                    .WithTopic("alpha/demo-operator/demo-energy-site/chp-demo-001/telemetry")
+                    .WithTopic(Topics.EdgeMqttTelemetry("demo-operator", "demo-energy-site", "chp-demo-001"))
                     .WithPayload(payload)
                     .WithQualityOfServiceLevel(MqttQualityOfServiceLevel.AtLeastOnce)
                     .Build());
 
-                Assert.Equal(
-                    "alpha/demo-operator/demo-energy-site/chp-demo-001/telemetry-stored",
-                    await receivedTopic.Task.WaitAsync(TimeSpan.FromSeconds(10)));
+                Assert.Equal(storedSubject, await received);
 
                 Assert.Equal(1, await CountRowsAsync(connectionString, "telemetry_samples"));
                 Assert.Equal(1, await CountRowsAsync(connectionString, "tag_current"));
@@ -168,13 +141,12 @@ public sealed class TelemetryPrimaryIngestionTests
         }
     }
 
-    private static IHost BuildTelemetryHost(string connectionString, string mqttHost, int mqttPort, string catalogBaseAddress)
+    private static IHost BuildTelemetryHost(string connectionString, string natsUrl, string catalogBaseAddress)
     {
         var settings = new Dictionary<string, string?>
         {
             ["ConnectionStrings:Postgres"] = connectionString,
-            ["Mqtt:Host"] = mqttHost,
-            ["Mqtt:Port"] = mqttPort.ToString(),
+            ["Nats:Url"] = natsUrl,
             ["Services:Tenant"] = catalogBaseAddress,
             ["Services:Asset"] = catalogBaseAddress,
             ["Services:TagCatalog"] = catalogBaseAddress
@@ -189,26 +161,17 @@ public sealed class TelemetryPrimaryIngestionTests
                 services.AddSingleton<TelemetryRepository>();
                 services.AddSingleton<CatalogCache>();
                 services.AddMemoryCache();
+                services.AddHostedService<TelemetryEdgeIngestionWorker>();
                 services.AddHttpClient("tenant", client => client.BaseAddress = new Uri(catalogBaseAddress));
                 services.AddHttpClient("asset", client => client.BaseAddress = new Uri(catalogBaseAddress));
                 services.AddHttpClient("tagCatalog", client => client.BaseAddress = new Uri(catalogBaseAddress));
             })
             .UseAlphaMessaging("telemetry-primary-test", options =>
             {
-                options.Discovery.IncludeAssembly(typeof(TelemetryIngestionHandler).Assembly);
-                options.ListenToMqttTopic(Topics.TelemetryWildcard)
-                    .UseInterop(new RawTelemetryEnvelopeMapper())
-                    .DefaultIncomingMessage(typeof(TelemetryEnvelopeV1));
-                options.PublishMessagesToMqttTopic<TelemetryBatchStored>(message =>
-                    Topics.TelemetryStored(message.TenantKey, message.SiteKey, message.UnitKey));
+                options.PublishMessage<TelemetryBatchStored>().ToNatsSubject(Topics.TelemetryStoredEvent).UseJetStream(Topics.DomainStream);
             })
             .Build();
     }
-
-    private static MqttClientSubscribeOptions Subscribe(string topic) =>
-        new MqttClientSubscribeOptionsBuilder()
-            .WithTopicFilter(topic, MqttQualityOfServiceLevel.AtLeastOnce, false, false, MqttRetainHandling.SendAtSubscribe)
-            .Build();
 
     private static async Task WaitForPostgresAsync(string connectionString)
     {

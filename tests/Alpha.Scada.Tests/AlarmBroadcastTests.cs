@@ -6,12 +6,8 @@ using DotNet.Testcontainers.Containers;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using MQTTnet;
-using MQTTnet.Client;
-using MQTTnet.Protocol;
 using Npgsql;
-using Wolverine;
-using Wolverine.MQTT;
+using Wolverine.Nats;
 using Xunit.Sdk;
 
 namespace Alpha.Scada.Tests;
@@ -19,105 +15,51 @@ namespace Alpha.Scada.Tests;
 public sealed class AlarmBroadcastTests
 {
     [Fact]
-    public async Task Alarm_raised_is_published_to_unit_alarm_topic()
+    public async Task Alarm_raised_is_published_to_unit_alarm_subject()
     {
         var tempDir = Path.Combine(Path.GetTempPath(), $"alpha-alarm-broadcast-test-{Guid.NewGuid():N}");
         Directory.CreateDirectory(tempDir);
         try
         {
-            await File.WriteAllTextAsync(Path.Combine(tempDir, "mosquitto.conf"), """
-                listener 1883
-                allow_anonymous true
-                persistence false
-                log_dest stdout
-                """);
-
-            var postgres = new ContainerBuilder()
-                .WithImage("postgres:16-alpine")
-                .WithEnvironment("POSTGRES_DB", "alpha_test")
-                .WithEnvironment("POSTGRES_USER", "alpha")
-                .WithEnvironment("POSTGRES_PASSWORD", "alpha-pass")
-                .WithPortBinding(5432, true)
-                .WithWaitStrategy(Wait.ForUnixContainer().UntilInternalTcpPortIsAvailable(5432))
-                .Build();
-
-            var mosquitto = new ContainerBuilder()
-                .WithImage("eclipse-mosquitto:2")
-                .WithBindMount(tempDir, "/mosquitto/config", AccessMode.ReadOnly)
-                .WithPortBinding(1883, true)
-                .WithCommand("mosquitto", "-c", "/mosquitto/config/mosquitto.conf")
-                .WithWaitStrategy(Wait.ForUnixContainer().UntilInternalTcpPortIsAvailable(1883))
-                .Build();
-
+            var postgres = PostgresContainer();
+            IContainer nats;
             try
             {
                 await postgres.StartAsync();
-                await mosquitto.StartAsync();
+                nats = await NatsTestSupport.StartAsync(tempDir);
             }
             catch (DockerUnavailableException ex)
             {
+                await postgres.DisposeAsync();
                 throw SkipException.ForSkip($"Docker is not available for alarm broadcast integration test: {ex.Message}");
             }
 
             await using (postgres)
-            await using (mosquitto)
+            await using (nats)
             {
-                var connectionString =
-                    $"Host={postgres.Hostname};Port={postgres.GetMappedPublicPort(5432)};Database=alpha_test;Username=alpha;Password=alpha-pass";
+                var connectionString = ConnectionString(postgres);
                 await WaitForPostgresAsync(connectionString);
+                var natsUrl = NatsTestSupport.Url(nats);
+                var subject = Topics.AlarmRaisedEvent;
+                var received = NatsTestSupport.WaitForSubjectAsync(natsUrl, subject, TimeSpan.FromSeconds(10));
 
-                var factory = new MqttFactory();
-                using var subscriber = factory.CreateMqttClient();
-                var receivedTopic = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
-                subscriber.ApplicationMessageReceivedAsync += args =>
-                {
-                    receivedTopic.TrySetResult(args.ApplicationMessage.Topic);
-                    return Task.CompletedTask;
-                };
-
-                await subscriber.ConnectAsync(
-                    new MqttClientOptionsBuilder()
-                        .WithTcpServer(mosquitto.Hostname, mosquitto.GetMappedPublicPort(1883))
-                        .WithClientId($"alarm-test-subscriber-{Guid.NewGuid():N}")
-                        .Build());
-                await subscriber.SubscribeAsync(
-                    new MqttClientSubscribeOptionsBuilder()
-                        .WithTopicFilter("alpha/demo-operator/demo-site/chp-001/alarm/raised", MqttQualityOfServiceLevel.AtLeastOnce, false, false, MqttRetainHandling.SendAtSubscribe)
-                        .Build());
-
-                var settings = new Dictionary<string, string?>
-                {
-                    ["ConnectionStrings:Postgres"] = connectionString,
-                    ["Mqtt:Host"] = mosquitto.Hostname,
-                    ["Mqtt:Port"] = mosquitto.GetMappedPublicPort(1883).ToString()
-                };
-
-                using var host = Host.CreateDefaultBuilder()
-                    .ConfigureAppConfiguration(config => config.AddInMemoryCollection(settings))
-                    .UseAlphaMessaging("alarm-test", options =>
-                    {
-                        options.PublishMessagesToMqttTopic<AlarmRaised>(message =>
-                            Topics.AlarmRaised(message.TenantKey, message.SiteKey, message.UnitKey));
-                    })
-                    .Build();
-
+                using var host = BuildHost(connectionString, natsUrl);
                 await host.StartAsync();
-                await host.Services.GetRequiredService<Wolverine.IMessageBus>().PublishAsync(new AlarmRaised(
-                    Guid.NewGuid(),
-                    Guid.NewGuid(),
-                    Guid.NewGuid(),
-                    null,
-                    "demo-operator",
-                    "demo-site",
-                    "chp-001",
-                    "critical",
-                    "Unit communication lost",
-                    DateTimeOffset.UtcNow));
+                await Task.Delay(250);
+                await host.Services.GetRequiredService<Wolverine.IMessageBus>().PublishAsync(
+                    new AlarmRaised(
+                        Guid.NewGuid(),
+                        Guid.NewGuid(),
+                        Guid.NewGuid(),
+                        null,
+                        "demo-operator",
+                        "demo-site",
+                        "chp-001",
+                        "critical",
+                        "Unit communication lost",
+                        DateTimeOffset.UtcNow));
 
-                Assert.Equal(
-                    "alpha/demo-operator/demo-site/chp-001/alarm/raised",
-                    await receivedTopic.Task.WaitAsync(TimeSpan.FromSeconds(10)));
-
+                Assert.Equal(subject, await received);
                 await host.StopAsync();
             }
         }
@@ -126,6 +68,36 @@ public sealed class AlarmBroadcastTests
             Directory.Delete(tempDir, recursive: true);
         }
     }
+
+    private static IContainer PostgresContainer() =>
+        new ContainerBuilder()
+            .WithImage("postgres:16-alpine")
+            .WithEnvironment("POSTGRES_DB", "alpha_test")
+            .WithEnvironment("POSTGRES_USER", "alpha")
+            .WithEnvironment("POSTGRES_PASSWORD", "alpha-pass")
+            .WithPortBinding(5432, true)
+            .WithWaitStrategy(Wait.ForUnixContainer().UntilInternalTcpPortIsAvailable(5432))
+            .Build();
+
+    private static IHost BuildHost(string connectionString, string natsUrl)
+    {
+        var settings = new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:Postgres"] = connectionString,
+            ["Nats:Url"] = natsUrl
+        };
+
+        return Host.CreateDefaultBuilder()
+            .ConfigureAppConfiguration(config => config.AddInMemoryCollection(settings))
+            .UseAlphaMessaging("alarm-broadcast-test", options =>
+            {
+                options.PublishMessage<AlarmRaised>().ToNatsSubject(Topics.AlarmRaisedEvent).UseJetStream(Topics.DomainStream);
+            })
+            .Build();
+    }
+
+    private static string ConnectionString(IContainer postgres) =>
+        $"Host={postgres.Hostname};Port={postgres.GetMappedPublicPort(5432)};Database=alpha_test;Username=alpha;Password=alpha-pass";
 
     private static async Task WaitForPostgresAsync(string connectionString)
     {

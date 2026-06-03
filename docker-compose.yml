@@ -10,10 +10,9 @@ services:
       ASPNETCORE_URLS: http://+:8080
       Jwt__Secret: ${JWT_SECRET:?JWT_SECRET must be set in .env}
       ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=alpha_reporting;Username=alpha;Password=alpha
-      Mqtt__Host: mosquitto
-      Mqtt__Port: "1883"
-      Mqtt__User: ${MQTT_USER_GATEWAY:?MQTT_USER_GATEWAY must be set in .env}
-      Mqtt__Password: ${MQTT_PASSWORD_GATEWAY:?MQTT_PASSWORD_GATEWAY must be set in .env}
+      Nats__Url: nats://nats:4222
+      Nats__User: ${NATS_USER_SERVICES:?NATS_USER_SERVICES must be set in .env}
+      Nats__Password: ${NATS_PASSWORD_SERVICES:?NATS_PASSWORD_SERVICES must be set in .env}
       Services__Identity: http://identity:8080
       Services__Tenant: http://tenant:8080
       Services__Asset: http://asset:8080
@@ -28,7 +27,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      mosquitto:
+      nats:
         condition: service_started
       identity:
         condition: service_started
@@ -91,17 +90,16 @@ services:
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=alpha_asset;Username=alpha;Password=alpha
       Jwt__Secret: ${JWT_SECRET:?JWT_SECRET must be set in .env}
-      Mqtt__Host: mosquitto
-      Mqtt__Port: "1883"
-      Mqtt__User: ${MQTT_USER_ASSET:?MQTT_USER_ASSET must be set in .env}
-      Mqtt__Password: ${MQTT_PASSWORD_ASSET:?MQTT_PASSWORD_ASSET must be set in .env}
+      Nats__Url: nats://nats:4222
+      Nats__User: ${NATS_USER_SERVICES:?NATS_USER_SERVICES must be set in .env}
+      Nats__Password: ${NATS_PASSWORD_SERVICES:?NATS_PASSWORD_SERVICES must be set in .env}
       Services__Tenant: http://tenant:8080
     networks:
       - alpha-internal
     depends_on:
       postgres:
         condition: service_healthy
-      mosquitto:
+      nats:
         condition: service_started
       tenant:
         condition: service_started
@@ -134,10 +132,9 @@ services:
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=alpha_telemetry;Username=alpha;Password=alpha
       Jwt__Secret: ${JWT_SECRET:?JWT_SECRET must be set in .env}
-      Mqtt__Host: mosquitto
-      Mqtt__Port: "1883"
-      Mqtt__User: ${MQTT_USER_TELEMETRY:?MQTT_USER_TELEMETRY must be set in .env}
-      Mqtt__Password: ${MQTT_PASSWORD_TELEMETRY:?MQTT_PASSWORD_TELEMETRY must be set in .env}
+      Nats__Url: nats://nats:4222
+      Nats__User: ${NATS_USER_SERVICES:?NATS_USER_SERVICES must be set in .env}
+      Nats__Password: ${NATS_PASSWORD_SERVICES:?NATS_PASSWORD_SERVICES must be set in .env}
       Services__Tenant: http://tenant:8080
       Services__Asset: http://asset:8080
       Services__TagCatalog: http://tag-catalog:8080
@@ -146,7 +143,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      mosquitto:
+      nats:
         condition: service_started
       tenant:
         condition: service_started
@@ -166,10 +163,9 @@ services:
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=alpha_alarm;Username=alpha;Password=alpha
       Jwt__Secret: ${JWT_SECRET:?JWT_SECRET must be set in .env}
-      Mqtt__Host: mosquitto
-      Mqtt__Port: "1883"
-      Mqtt__User: ${MQTT_USER_ALARM:?MQTT_USER_ALARM must be set in .env}
-      Mqtt__Password: ${MQTT_PASSWORD_ALARM:?MQTT_PASSWORD_ALARM must be set in .env}
+      Nats__Url: nats://nats:4222
+      Nats__User: ${NATS_USER_SERVICES:?NATS_USER_SERVICES must be set in .env}
+      Nats__Password: ${NATS_PASSWORD_SERVICES:?NATS_PASSWORD_SERVICES must be set in .env}
       Services__Asset: http://asset:8080
       Services__Tenant: http://tenant:8080
       Services__TagCatalog: http://tag-catalog:8080
@@ -178,7 +174,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      mosquitto:
+      nats:
         condition: service_started
       asset:
         condition: service_started
@@ -197,7 +193,9 @@ services:
     environment:
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=alpha_reporting;Username=alpha;Password=alpha
-      Mqtt__Enabled: "false"
+      Nats__Url: nats://nats:4222
+      Nats__User: ${NATS_USER_SERVICES:?NATS_USER_SERVICES must be set in .env}
+      Nats__Password: ${NATS_PASSWORD_SERVICES:?NATS_PASSWORD_SERVICES must be set in .env}
       Jwt__Secret: ${JWT_SECRET:?JWT_SECRET must be set in .env}
       Services__Asset: http://asset:8080
       Services__Telemetry: http://telemetry:8080
@@ -208,6 +206,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      nats:
+        condition: service_started
       asset:
         condition: service_started
       telemetry:
@@ -227,17 +227,17 @@ services:
     environment:
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=alpha_edge;Username=alpha;Password=alpha
-      Mqtt__Host: mosquitto
-      Mqtt__Port: "1883"
-      Simulator__MqttUser: ${MQTT_USER_EDGE:?MQTT_USER_EDGE must be set in .env}
-      Simulator__MqttPassword: ${MQTT_PASSWORD_EDGE:?MQTT_PASSWORD_EDGE must be set in .env}
+      EdgeMqtt__Host: nats
+      EdgeMqtt__Port: "1883"
+      Simulator__MqttUser: ${NATS_USER_EDGE:?NATS_USER_EDGE must be set in .env}
+      Simulator__MqttPassword: ${NATS_PASSWORD_EDGE:?NATS_PASSWORD_EDGE must be set in .env}
       Simulator__Enabled: "true"
     networks:
       - alpha-internal
     depends_on:
       postgres:
         condition: service_healthy
-      mosquitto:
+      nats:
         condition: service_started
 
   frontend:
@@ -269,15 +269,18 @@ services:
       - alpha-postgres-data:/var/lib/postgresql/data
       - ./ops/postgres/init.sql:/docker-entrypoint-initdb.d/001-init.sql:ro
 
-  mosquitto:
-    image: eclipse-mosquitto:2
+  nats:
+    image: nats:2.12-alpine
+    command: ["-c", "/etc/nats/nats-server.conf"]
     networks:
       - alpha-internal
+    ports:
+      - "4222:4222"
+      - "1883:1883"
+      - "8222:8222"
     volumes:
-      - ./ops/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
-      - ./ops/mosquitto/acl:/mosquitto/config/acl:ro
-      - ./ops/mosquitto/passwords:/mosquitto/config/passwords:ro
-      - alpha-mosquitto-data:/mosquitto/data
+      - ./ops/nats/nats-server.conf:/etc/nats/nats-server.conf:ro
+      - alpha-nats-data:/data
 
   prometheus:
     image: prom/prometheus:v2.55.1
@@ -303,7 +306,7 @@ services:
 volumes:
   alpha-postgres-data:
   alpha-grafana-data:
-  alpha-mosquitto-data:
+  alpha-nats-data:
 
 networks:
   alpha-internal:

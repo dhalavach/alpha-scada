@@ -25,16 +25,6 @@ spec:
           env:
             - name: ConnectionStrings__Postgres
               value: Host=postgres;Port=5432;Database=alpha_reporting;Username=alpha;Password=alpha
-            - name: Mqtt__User
-              valueFrom:
-                secretKeyRef:
-                  name: alpha-scada-secrets
-                  key: MQTT_USER_GATEWAY
-            - name: Mqtt__Password
-              valueFrom:
-                secretKeyRef:
-                  name: alpha-scada-secrets
-                  key: MQTT_PASSWORD_GATEWAY
             - name: Services__Identity
               value: http://identity:8080
             - name: Services__Tenant
@@ -211,16 +201,6 @@ spec:
           env:
             - name: ConnectionStrings__Postgres
               value: Host=postgres;Port=5432;Database=alpha_asset;Username=alpha;Password=alpha
-            - name: Mqtt__User
-              valueFrom:
-                secretKeyRef:
-                  name: alpha-scada-secrets
-                  key: MQTT_USER_ASSET
-            - name: Mqtt__Password
-              valueFrom:
-                secretKeyRef:
-                  name: alpha-scada-secrets
-                  key: MQTT_PASSWORD_ASSET
             - name: Services__Tenant
               value: http://tenant:8080
           ports:
@@ -331,16 +311,6 @@ spec:
           env:
             - name: ConnectionStrings__Postgres
               value: Host=postgres;Port=5432;Database=alpha_telemetry;Username=alpha;Password=alpha
-            - name: Mqtt__User
-              valueFrom:
-                secretKeyRef:
-                  name: alpha-scada-secrets
-                  key: MQTT_USER_TELEMETRY
-            - name: Mqtt__Password
-              valueFrom:
-                secretKeyRef:
-                  name: alpha-scada-secrets
-                  key: MQTT_PASSWORD_TELEMETRY
             - name: Services__Tenant
               value: http://tenant:8080
             - name: Services__Asset
@@ -401,16 +371,6 @@ spec:
           env:
             - name: ConnectionStrings__Postgres
               value: Host=postgres;Port=5432;Database=alpha_alarm;Username=alpha;Password=alpha
-            - name: Mqtt__User
-              valueFrom:
-                secretKeyRef:
-                  name: alpha-scada-secrets
-                  key: MQTT_USER_ALARM
-            - name: Mqtt__Password
-              valueFrom:
-                secretKeyRef:
-                  name: alpha-scada-secrets
-                  key: MQTT_PASSWORD_ALARM
             - name: Services__Asset
               value: http://asset:8080
             - name: Services__Tenant
@@ -471,8 +431,6 @@ spec:
           env:
             - name: ConnectionStrings__Postgres
               value: Host=postgres;Port=5432;Database=alpha_reporting;Username=alpha;Password=alpha
-            - name: Mqtt__Enabled
-              value: "false"
             - name: Services__Asset
               value: http://asset:8080
             - name: Services__Telemetry

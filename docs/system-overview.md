@@ -4,7 +4,7 @@ This document describes the current Alpha SCADA implementation after the microse
 
 Architecture decisions:
 
-- [ADR 002: Wolverine Messaging With MQTT And PostgreSQL](architecture-decisions/002-messaging.md)
+- [ADR 002: Wolverine Messaging Over NATS JetStream](architecture-decisions/002-messaging.md)
 
 Operations:
 
@@ -15,7 +15,7 @@ Operations:
 Alpha SCADA is a lightweight open-source SCADA platform for small industrial energy sites. The current implementation focuses on:
 
 - Multi-tenant site and unit monitoring.
-- Edge ingestion through MQTT.
+- Edge ingestion through the NATS MQTT listener.
 - Live telemetry, history, alarms, and monthly reporting.
 - Browser-based operator UI.
 - Low-cost deployment using Docker Compose locally and k3s manifests for production-like environments.
@@ -38,21 +38,21 @@ flowchart LR
     Gateway --> Alarm["Alarm service"]
     Gateway --> Reporting["Reporting service"]
 
-    NodeRED["Node-RED / edge adapters"] --> Mosquitto["Mosquitto MQTT broker"]
-    Edge["Edge service<br/>optional simulator"] --> Mosquitto
+    NodeRED["Node-RED / edge adapters"] --> Nats["NATS Server<br/>MQTT listener + JetStream"]
+    Edge["Edge service<br/>optional simulator"] --> Nats
 
-    Mosquitto --> Telemetry
-    Telemetry --> Mosquitto
-    Mosquitto --> Asset
-    Mosquitto --> Alarm
-    Mosquitto --> Gateway
+    Nats --> Telemetry
+    Telemetry --> Nats
+    Nats --> Asset
+    Nats --> Alarm
+    Nats --> Gateway
 
     Telemetry --> Tenant
     Telemetry --> Asset
     Telemetry --> TagCatalog
     Alarm --> TagCatalog
-    Asset --> Mosquitto
-    Alarm --> Mosquitto
+    Asset --> Nats
+    Alarm --> Nats
 
     Reporting --> Asset
     Reporting --> Telemetry
@@ -72,13 +72,13 @@ flowchart LR
 
 | Service | Project | Owns | Main code locations |
 | --- | --- | --- | --- |
-| Gateway | `src/Alpha.Scada.Gateway` | Public REST API compatibility, BFF orchestration, SignalR hub, JWT validation, realtime MQTT-to-SignalR bridge | `Program.cs`, `Application/GatewayAuth.cs`, `Application/*BroadcastHandler.cs`, `Realtime/TelemetryHub.cs` |
+| Gateway | `src/Alpha.Scada.Gateway` | Public REST API compatibility, BFF orchestration, SignalR hub, JWT validation, realtime NATS-to-SignalR bridge | `Program.cs`, `Application/GatewayAuth.cs`, `Application/*BroadcastHandler.cs`, `Realtime/TelemetryHub.cs` |
 | Identity | `src/Alpha.Scada.Identity` | Users, roles, password hashing, login/logout audit, JWT issuing | `Application/AuthService.cs`, `Infrastructure/IdentityRepository.cs`, `Infrastructure/PasswordHasher.cs` |
 | Tenant | `src/Alpha.Scada.Tenant` | Tenant records and support-user tenant visibility | `Application/TenantService.cs`, `Infrastructure/TenantRepository.cs` |
 | Asset | `src/Alpha.Scada.Asset` | Sites, units, unit status, unit key resolution, stale unit transitions, communication-loss monitor | `Application/AssetService.cs`, `Application/CommunicationLossMonitorWorker.cs`, `Infrastructure/AssetRepository.cs` |
 | Tag Catalog | `src/Alpha.Scada.TagCatalog` | Subsystems, tag definitions, engineering units, threshold metadata | `Application/TagCatalogService.cs`, `Infrastructure/TagCatalogRepository.cs` |
 | Edge | `src/Alpha.Scada.Edge` | Optional development simulator and edge/device telemetry publishing boundary | `Application/ChpUnitSimulatorWorker.cs` |
-| Telemetry | `src/Alpha.Scada.Telemetry` | Raw MQTT telemetry normalization, current tag values, partitioned telemetry history, report aggregates | `Application/TelemetryIngestionHandler.cs`, `Application/CatalogCache.cs`, `Infrastructure/TelemetryRepository.cs` |
+| Telemetry | `src/Alpha.Scada.Telemetry` | Raw edge telemetry normalization, current tag values, partitioned telemetry history, report aggregates | `Application/TelemetryEdgeIngestionWorker.cs`, `Application/CatalogCache.cs`, `Infrastructure/TelemetryRepository.cs` |
 | Alarm | `src/Alpha.Scada.Alarm` | Alarm evaluation, active/acknowledged/cleared lifecycle, alarm counts | `Domain/AlarmRule.cs`, `Application/AlarmService.cs`, `Infrastructure/AlarmRepository.cs` |
 | Reporting | `src/Alpha.Scada.Reporting` | Monthly report generation and report run persistence | `Application/ReportingService.cs`, `Infrastructure/ReportingRepository.cs` |
 
@@ -106,7 +106,7 @@ Program.cs       Minimal API endpoints, dependency wiring, health/readiness/metr
 Gateway and Edge are intentionally thinner:
 
 - Gateway is a BFF/orchestration boundary, so most code lives in `Program.cs`, `Application`, and `Realtime`.
-- Edge is now an optional simulator/adapter host. Production adapters may be Node-RED or device-side publishers that write directly to Mosquitto.
+- Edge is now an optional simulator/adapter host. Production adapters may be Node-RED or device-side publishers that write directly to the NATS MQTT listener.
 
 ## Data Ownership
 
@@ -156,7 +156,7 @@ The Gateway validates the JWT for its own public routes and forwards the origina
 ```mermaid
 sequenceDiagram
     participant NR as Node-RED / Adapter
-    participant MQTT as Mosquitto
+    participant NATS as NATS JetStream
     participant Tenant as Tenant
     participant Asset as Asset
     participant Tags as Tag Catalog
@@ -165,18 +165,18 @@ sequenceDiagram
     participant GW as Gateway
     participant UI as React UI
 
-    NR->>MQTT: alpha/{tenantKey}/{siteKey}/{unitKey}/telemetry
-    MQTT->>Telemetry: raw telemetry payload
+    NR->>NATS: alpha/{tenant}.{site}.{unit}.telemetry
+    NATS->>Telemetry: raw telemetry payload
     Telemetry->>Tenant: Resolve tenant key
     Telemetry->>Asset: Resolve site/unit keys
     Telemetry->>Tags: Resolve tag metadata
     Telemetry->>Telemetry: Persist current values and history
-    Telemetry->>MQTT: alpha/{tenantKey}/{siteKey}/{unitKey}/telemetry-stored
-    MQTT->>Asset: TelemetryBatchStored
-    MQTT->>Alarm: TelemetryBatchStored
-    Asset->>MQTT: UnitStatusChanged
-    Alarm->>MQTT: AlarmRaised/Cleared/Acknowledged
-    MQTT->>GW: telemetry/status/alarm events
+    Telemetry->>NATS: alpha.telemetry.stored
+    NATS->>Asset: TelemetryBatchStored
+    NATS->>Alarm: TelemetryBatchStored
+    Asset->>NATS: alpha.status.changed
+    Alarm->>NATS: alpha.alarm.raised / cleared / acknowledged
+    NATS->>GW: telemetry/status/alarm events
     GW-->>UI: SignalR telemetry/alarm/status updates
 ```
 
@@ -190,14 +190,17 @@ sequenceDiagram
     participant Asset as Asset
     participant Telemetry as Telemetry
     participant Alarm as Alarm
+    participant NATS as NATS JetStream
 
     UI->>GW: POST /api/reports/monthly/run
-    GW->>Reporting: ReportRequested queue message
+    GW->>NATS: alpha.report.requested
+    NATS->>Reporting: ReportRequested
     Reporting->>Asset: Load unit
     Reporting->>Telemetry: Load monthly aggregates
     Reporting->>Alarm: Load alarm count
     Reporting->>Reporting: Persist report run
-    Reporting-->>GW: ReportCompleted queue message
+    Reporting->>NATS: alpha.report.completed
+    NATS-->>GW: ReportCompleted
     GW-->>UI: SignalR reportCompleted
 ```
 
@@ -229,10 +232,16 @@ Internal service APIs are under `/internal/v1/...`. They are not intended for di
 
 ## Edge MQTT Contract
 
-Telemetry topic:
+Edge publishers use MQTT slash topics against the NATS MQTT listener:
 
 ```text
 alpha/{tenantKey}/{siteKey}/{unitKey}/telemetry
+```
+
+NATS maps that into the internal subject:
+
+```text
+alpha.{tenantKey}.{siteKey}.{unitKey}.telemetry
 ```
 
 Example payload:
@@ -341,7 +350,7 @@ Kubernetes manifests live under `ops/k3s`:
 namespace.yaml
 config.yaml
 postgres.yaml
-mosquitto.yaml
+nats.yaml
 services.yaml
 frontend.yaml
 ```
@@ -350,7 +359,7 @@ The k3s manifests are intentionally simple:
 
 - one replica per service;
 - one PostgreSQL deployment for pilot use;
-- one Mosquitto deployment;
+- one NATS deployment with JetStream enabled;
 - no HA clustering yet;
 - no multi-region deployment yet.
 
@@ -366,7 +375,7 @@ Common change paths:
 | Change telemetry persistence/history behavior | `src/Alpha.Scada.Telemetry/Infrastructure/TelemetryRepository.cs` |
 | Change alarm threshold logic | `src/Alpha.Scada.Alarm/Domain/AlarmRule.cs` |
 | Change monthly report calculations | `src/Alpha.Scada.Reporting/Application/ReportingService.cs` and `src/Alpha.Scada.Telemetry/Infrastructure/TelemetryRepository.cs` |
-| Change MQTT ingestion behavior | `src/Alpha.Scada.Telemetry/Application/TelemetryIngestionHandler.cs` and `src/Alpha.Scada.Telemetry/Application/CatalogCache.cs` |
+| Change edge ingestion behavior | `src/Alpha.Scada.Telemetry/Application/TelemetryEdgeIngestionWorker.cs` and `src/Alpha.Scada.Telemetry/Application/CatalogCache.cs` |
 | Change simulator values | `src/Alpha.Scada.Edge/Application/ChpUnitSimulatorWorker.cs` |
 | Change frontend screens | `src/Alpha.Scada.Web/src/App.tsx`, `src/Alpha.Scada.Web/src/screens/*`, and `src/Alpha.Scada.Web/src/styles.css` |
 | Change Docker service topology | `docker-compose.yml` |

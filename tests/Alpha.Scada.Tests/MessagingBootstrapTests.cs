@@ -12,19 +12,12 @@ namespace Alpha.Scada.Tests;
 public sealed class MessagingBootstrapTests
 {
     [Fact]
-    public async Task UseAlphaMessaging_starts_and_stops_with_postgres_and_mosquitto()
+    public async Task UseAlphaMessaging_starts_and_stops_with_postgres_and_nats()
     {
         var tempDir = Path.Combine(Path.GetTempPath(), $"alpha-messaging-test-{Guid.NewGuid():N}");
         Directory.CreateDirectory(tempDir);
         try
         {
-            await File.WriteAllTextAsync(Path.Combine(tempDir, "mosquitto.conf"), """
-                listener 1883
-                allow_anonymous true
-                persistence false
-                log_dest stdout
-                """);
-
             var postgres = new ContainerBuilder()
                 .WithImage("postgres:16-alpine")
                 .WithEnvironment("POSTGRES_DB", "alpha_test")
@@ -34,26 +27,20 @@ public sealed class MessagingBootstrapTests
                 .WithWaitStrategy(Wait.ForUnixContainer().UntilInternalTcpPortIsAvailable(5432))
                 .Build();
 
-            var mosquitto = new ContainerBuilder()
-                .WithImage("eclipse-mosquitto:2")
-                .WithBindMount(tempDir, "/mosquitto/config", AccessMode.ReadOnly)
-                .WithPortBinding(1883, true)
-                .WithCommand("mosquitto", "-c", "/mosquitto/config/mosquitto.conf")
-                .WithWaitStrategy(Wait.ForUnixContainer().UntilInternalTcpPortIsAvailable(1883))
-                .Build();
-
+            IContainer nats;
             try
             {
                 await postgres.StartAsync();
-                await mosquitto.StartAsync();
+                nats = await NatsTestSupport.StartAsync(tempDir);
             }
             catch (DockerUnavailableException ex)
             {
+                await postgres.DisposeAsync();
                 throw SkipException.ForSkip($"Docker is not available for messaging bootstrap integration test: {ex.Message}");
             }
 
             await using (postgres)
-            await using (mosquitto)
+            await using (nats)
             {
                 var connectionString =
                     $"Host={postgres.Hostname};Port={postgres.GetMappedPublicPort(5432)};Database=alpha_test;Username=alpha;Password=alpha-pass";
@@ -62,8 +49,7 @@ public sealed class MessagingBootstrapTests
                 var settings = new Dictionary<string, string?>
                 {
                     ["ConnectionStrings:Postgres"] = connectionString,
-                    ["Mqtt:Host"] = mosquitto.Hostname,
-                    ["Mqtt:Port"] = mosquitto.GetMappedPublicPort(1883).ToString()
+                    ["Nats:Url"] = NatsTestSupport.Url(nats)
                 };
 
                 using var host = Host.CreateDefaultBuilder()

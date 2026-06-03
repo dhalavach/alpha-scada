@@ -25,10 +25,10 @@ public sealed class ChpUnitSimulatorWorker(
         using var client = factory.CreateMqttClient();
         var optionsBuilder = new MqttClientOptionsBuilder()
             .WithClientId($"alpha-scada-simulator-{Environment.MachineName}")
-            .WithTcpServer(configuration["Mqtt:Host"] ?? "localhost", configuration.GetValue("Mqtt:Port", 1883));
+            .WithTcpServer(configuration["EdgeMqtt:Host"] ?? "localhost", configuration.GetValue("EdgeMqtt:Port", 1883));
 
-        var mqttUser = configuration["Simulator:MqttUser"] ?? configuration["Mqtt:User"];
-        var mqttPassword = configuration["Simulator:MqttPassword"] ?? configuration["Mqtt:Password"];
+        var mqttUser = configuration["Simulator:MqttUser"] ?? configuration["EdgeMqtt:User"];
+        var mqttPassword = configuration["Simulator:MqttPassword"] ?? configuration["EdgeMqtt:Password"];
         if (!string.IsNullOrWhiteSpace(mqttUser))
         {
             optionsBuilder.WithCredentials(mqttUser, mqttPassword);
@@ -36,7 +36,7 @@ public sealed class ChpUnitSimulatorWorker(
 
         var options = optionsBuilder.Build();
         var jsonOptions = new JsonSerializerOptions(JsonSerializerDefaults.Web);
-        var topic = Topics.Telemetry("demo-operator", "demo-energy-site", "chp-demo-001");
+        var topic = Topics.EdgeMqttTelemetry("demo-operator", "demo-energy-site", "chp-demo-001");
 
         logger.LogInformation("Starting edge telemetry simulator.");
         while (!stoppingToken.IsCancellationRequested)
@@ -46,7 +46,7 @@ public sealed class ChpUnitSimulatorWorker(
                 if (!client.IsConnected)
                 {
                     await client.ConnectAsync(options, stoppingToken);
-                    logger.LogInformation("Telemetry simulator connected to MQTT broker at {Host}:{Port}.", configuration["Mqtt:Host"] ?? "localhost", configuration.GetValue("Mqtt:Port", 1883));
+                    logger.LogInformation("Telemetry simulator connected to edge MQTT listener at {Host}:{Port}.", configuration["EdgeMqtt:Host"] ?? "localhost", configuration.GetValue("EdgeMqtt:Port", 1883));
                 }
 
                 var now = DateTimeOffset.UtcNow;

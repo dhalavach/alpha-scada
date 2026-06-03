@@ -11,7 +11,9 @@ public static class TelemetryTopicParser
             return null;
         }
 
-        var parts = topic.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        var parts = topic.Contains('/', StringComparison.Ordinal)
+            ? topic.Split('/', StringSplitOptions.RemoveEmptyEntries)
+            : topic.Split('.', StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length != 5 || parts[0] != "alpha" || parts[4] != "telemetry")
         {
             return null;

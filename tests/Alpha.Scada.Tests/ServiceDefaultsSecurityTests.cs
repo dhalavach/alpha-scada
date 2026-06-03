@@ -12,29 +12,21 @@ public sealed class ServiceDefaultsSecurityTests
     [InlineData("Basic abc")]
     [InlineData("Bearer")]
     [InlineData("Bearer definitely-not-a-jwt")]
-    public void User_context_rejects_missing_or_invalid_bearer_tokens(string authorization)
+    public void Jwt_service_rejects_invalid_tokens(string token)
     {
         var tokens = new JwtTokenService(ConfigurationWithSecret());
-        var headers = new HeaderDictionary
-        {
-            ["Authorization"] = authorization
-        };
 
-        Assert.Null(HttpUserContext.FromBearerToken(headers, tokens));
+        Assert.Null(tokens.Validate(token));
     }
 
     [Fact]
-    public void User_context_accepts_bearer_token_case_insensitively()
+    public void Jwt_service_validates_issued_user_claims()
     {
         var tokens = new JwtTokenService(ConfigurationWithSecret());
         var user = new UserDto(Guid.NewGuid(), Guid.NewGuid(), "operator@example.test", "Operator", Roles.Operator);
         var issued = tokens.Issue(user, TimeSpan.FromMinutes(5));
-        var headers = new HeaderDictionary
-        {
-            ["Authorization"] = $"bearer   {issued.AccessToken}  "
-        };
 
-        var current = HttpUserContext.FromBearerToken(headers, tokens);
+        var current = tokens.Validate(issued.AccessToken);
 
         Assert.NotNull(current);
         Assert.Equal(user.Id, current.UserId);

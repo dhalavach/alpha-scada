@@ -1,13 +1,14 @@
+using Alpha.Scada.ServiceDefaults;
 using Npgsql;
 
 namespace Alpha.Scada.Telemetry.Infrastructure;
 
-public sealed class TelemetryMigrator(NpgsqlDataSource dataSource, ILogger<TelemetryMigrator> logger)
+public sealed class TelemetryMigrator(NpgsqlDataSource dataSource, ILogger<TelemetryMigrator> logger) :
+    SqlDatabaseMigrator(dataSource, logger)
 {
-    public async Task MigrateAsync(CancellationToken cancellationToken)
-    {
-        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        await using var command = new NpgsqlCommand("""
+    protected override IReadOnlyList<SqlMigration> Migrations { get; } =
+    [
+        new("001_initial", """
             create table if not exists tag_current (
                 tenant_id uuid not null,
                 unit_id uuid not null,
@@ -34,8 +35,6 @@ public sealed class TelemetryMigrator(NpgsqlDataSource dataSource, ILogger<Telem
             create table if not exists telemetry_samples_default partition of telemetry_samples default;
             create index if not exists ix_telemetry_tenant_unit_time on telemetry_samples(tenant_id, unit_id, timestamp_utc desc);
             create index if not exists ix_telemetry_unit_time on telemetry_samples(unit_id, timestamp_utc desc);
-            """, connection);
-        await command.ExecuteNonQueryAsync(cancellationToken);
-        logger.LogInformation("Telemetry database is ready.");
-    }
+            """)
+    ];
 }

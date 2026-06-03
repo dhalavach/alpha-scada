@@ -1,4 +1,5 @@
 using Alpha.Scada.Contracts;
+using Alpha.Scada.ServiceDefaults;
 using Npgsql;
 using System.Security.Cryptography;
 
@@ -8,19 +9,19 @@ public sealed class IdentityMigrator(
     NpgsqlDataSource dataSource,
     IConfiguration configuration,
     IHostEnvironment environment,
-    ILogger<IdentityMigrator> logger)
+    ILogger<IdentityMigrator> logger) : SqlDatabaseMigrator(dataSource, logger)
 {
-    public async Task MigrateAsync(CancellationToken cancellationToken)
-    {
-        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        await using var command = new NpgsqlCommand(SchemaSql, connection);
-        await command.ExecuteNonQueryAsync(cancellationToken);
+    protected override IReadOnlyList<SqlMigration> Migrations { get; } =
+    [
+        new("001_initial", SchemaSql)
+    ];
 
+    protected override async Task SeedAsync(NpgsqlConnection connection, CancellationToken cancellationToken)
+    {
         var seedDemoUsers = configuration.GetValue<bool?>("Seed:DemoUsers") ?? environment.IsDevelopment();
         if (!seedDemoUsers)
         {
             await EnsureBootstrapAdminAsync(connection, cancellationToken);
-            logger.LogInformation("Identity database is ready.");
             return;
         }
 

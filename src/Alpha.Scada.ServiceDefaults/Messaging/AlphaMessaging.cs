@@ -4,10 +4,9 @@ using JasperFx;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using MQTTnet.Client;
 using Wolverine;
 using Wolverine.ErrorHandling;
-using Wolverine.MQTT;
+using Wolverine.Nats;
 using Wolverine.Postgresql;
 
 namespace Alpha.Scada.ServiceDefaults.Messaging;
@@ -39,7 +38,6 @@ public static class AlphaMessaging
         var postgres = configuration.GetConnectionString("Postgres")
             ?? throw new InvalidOperationException("ConnectionStrings:Postgres is required to enable Alpha messaging.");
         var storageSchema = configuration.GetValue("Wolverine:StorageSchema", "wolverine");
-        var transportSchema = configuration.GetValue("Wolverine:TransportSchema", "wolverine_queues");
 
         options.ServiceName = serviceName;
         var entryAssembly = Assembly.GetEntryAssembly();
@@ -60,12 +58,8 @@ public static class AlphaMessaging
             json.NumberHandling = web.NumberHandling;
         });
 
-        options.PersistMessagesWithPostgresql(postgres, storageSchema)
-            .EnableMessageTransport(postgresql => postgresql.TransportSchemaName(transportSchema));
-        if (configuration.GetValue("Mqtt:Enabled", true))
-        {
-            ConfigureMqtt(options, configuration, serviceName);
-        }
+        options.PersistMessagesWithPostgresql(postgres, storageSchema);
+        ConfigureNats(options, configuration);
 
         options.Policies.AutoApplyTransactions();
         options.Policies.UseDurableInboxOnAllListeners();
@@ -77,28 +71,43 @@ public static class AlphaMessaging
         configure?.Invoke(options);
     }
 
-    private static void ConfigureMqtt(WolverineOptions options, IConfiguration configuration, string serviceName)
+    private static void ConfigureNats(WolverineOptions options, IConfiguration configuration)
     {
-        var host = configuration.GetValue("Mqtt:Host", "localhost");
-        var port = configuration.GetValue("Mqtt:Port", 1883);
-        var user = configuration["Mqtt:User"];
-        var password = configuration["Mqtt:Password"];
-        var clientId = $"{serviceName}-{Environment.MachineName}-{Guid.NewGuid():N}";
+        var url = configuration["Nats:Url"] ?? "nats://localhost:4222";
+        var user = configuration["Nats:User"];
+        var password = configuration["Nats:Password"];
 
-        options.UseMqtt(mqtt =>
+        var nats = options.UseNats(url);
+        if (!string.IsNullOrWhiteSpace(user))
         {
-            mqtt.WithAutoReconnectDelay(TimeSpan.FromSeconds(5));
-            mqtt.WithClientOptions(client =>
-            {
-                client.WithClientId(clientId)
-                    .WithTcpServer(host, port);
+            nats.WithCredentials(user, password ?? string.Empty);
+        }
 
-                if (!string.IsNullOrWhiteSpace(user))
-                {
-                    client.WithCredentials(user, password ?? string.Empty);
-                }
-            });
+        nats.UseJetStream(streams =>
+        {
+            streams.MaxAge = TimeSpan.FromDays(7);
+            streams.AckWait = TimeSpan.FromSeconds(30);
+            streams.MaxDeliver = 5;
+            streams.DuplicateWindow = TimeSpan.FromMinutes(10);
         });
+
+        nats.DefineLogStream(
+            Topics.EdgeStream,
+            TimeSpan.FromDays(7),
+            Topics.TelemetryWildcard,
+            Topics.SparkplugWildcard);
+
+        nats.DefineLogStream(
+            Topics.DomainStream,
+            TimeSpan.FromDays(7),
+            Topics.TelemetryStoredEvent,
+            Topics.StatusChangedEvent,
+            Topics.AlarmRaisedEvent,
+            Topics.AlarmClearedEvent,
+            Topics.AlarmAcknowledgedEvent,
+            Topics.ReportCompleted);
+
+        nats.DefineWorkQueueStream(Topics.JobsStream, Topics.ReportRequested);
     }
 
     private static IConfiguration BuildFallbackConfiguration() =>

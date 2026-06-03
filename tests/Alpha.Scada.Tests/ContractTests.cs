@@ -53,28 +53,6 @@ public sealed class ContractTests
     }
 
     [Fact]
-    public void User_context_rejects_handcrafted_identity_headers_without_bearer_token()
-    {
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["Jwt:Secret"] = "test-secret-test-secret-test-secret-32"
-            })
-            .Build();
-        var tokens = new JwtTokenService(configuration);
-        var headers = new HeaderDictionary
-        {
-            ["X-User-Id"] = Guid.NewGuid().ToString(),
-            ["X-Tenant-Id"] = Guid.NewGuid().ToString(),
-            ["X-User-Email"] = "attacker@example.test",
-            ["X-User-Name"] = "Attacker",
-            ["X-User-Role"] = Roles.Admin
-        };
-
-        Assert.Null(HttpUserContext.FromBearerToken(headers, tokens));
-    }
-
-    [Fact]
     public void Jwt_service_requires_a_configured_secret()
     {
         var configuration = new ConfigurationBuilder().Build();

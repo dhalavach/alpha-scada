@@ -57,12 +57,12 @@
       }
     },
     {
-      "title": "MQTT DLQ Depth",
+      "title": "NATS Error Backlog",
       "type": "timeseries",
       "datasource": "Prometheus",
       "targets": [
         {
-          "expr": "alpha_scada_mqtt_dlq_depth",
+          "expr": "alpha_scada_nats_error_backlog",
           "legendFormat": "{{ service }}"
         }
       ],
@@ -74,12 +74,12 @@
       }
     },
     {
-      "title": "MQTT Subscribe Lag",
+      "title": "NATS Consumer Lag",
       "type": "timeseries",
       "datasource": "Prometheus",
       "targets": [
         {
-          "expr": "alpha_scada_mqtt_subscribe_lag_seconds",
+          "expr": "alpha_scada_nats_consumer_lag_seconds",
           "legendFormat": "{{ service }}"
         }
       ],

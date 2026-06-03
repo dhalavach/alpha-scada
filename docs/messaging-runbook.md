@@ -2,7 +2,7 @@
 
 This runbook covers the v1 messaging path:
 
-Edge/adapter MQTT telemetry -> Telemetry normalization -> `TelemetryBatchStored` -> Asset/Alarm -> Gateway SignalR.
+Edge/adapter MQTT telemetry -> NATS MQTT listener -> Telemetry normalization -> `TelemetryBatchStored` -> Asset/Alarm -> Gateway SignalR.
 
 ## Quick Health Check
 
@@ -10,6 +10,7 @@ Edge/adapter MQTT telemetry -> Telemetry normalization -> `TelemetryBatchStored`
 docker compose ps
 curl -fsS http://localhost:5202/health
 curl -fsS http://localhost:8080/
+curl -fsS http://localhost:8222/varz
 ```
 
 Check Prometheus targets:
@@ -19,38 +20,21 @@ docker compose --profile ops up -d prometheus grafana
 open http://localhost:3000
 ```
 
-Each service exports app-side Wolverine metrics at `/metrics`, including
-outbox depth, error queue depth, and telemetry sample count where applicable.
-Broker-side MQTT DLQ depth and subscriber lag still require a dedicated
-Mosquitto exporter or log-derived metric in a later operations slice.
+Each service exports app-side Wolverine metrics at `/metrics`, including outbox depth, error queue depth, and telemetry sample count where applicable. NATS monitoring is available on `http://localhost:8222`.
 
-## MQTT DLQ Is Non-Empty
+## JetStream Streams
 
-Inspect messages:
+Inspect streams:
 
 ```bash
-set -a
-source .env
-set +a
-docker compose exec -T mosquitto mosquitto_sub \
-  -h localhost \
-  -t 'alpha/_dlq/#' \
-  -u "$MQTT_USER_ADMIN" \
-  -P "$MQTT_PASSWORD_ADMIN" \
-  -C 10 \
-  -W 10 \
-  -v
+curl -fsS "http://localhost:8222/jsz?streams=true&consumers=true" | jq
 ```
 
-Triage:
+Expected streams:
 
-1. Identify the owning service from the topic: `alpha/_dlq/<service>/...`.
-2. Check that service logs: `docker compose logs --tail 200 <service>`.
-3. Compare the message schema version to `docs/architecture-decisions/002-messaging.md`.
-4. If the payload is valid but the consumer is down, restart only the consumer service.
-5. If the payload is invalid, save the message body with the incident record and discard it after approval.
-
-Replay is manual in v1. Publish the corrected payload to the original topic with `mosquitto_pub`.
+- `ALPHA_EDGE`: raw edge ingress and Sparkplug-ready subjects.
+- `ALPHA_DOMAIN`: normalized telemetry, status, alarm, and report-completed events.
+- `ALPHA_JOBS`: report request work queue.
 
 ## Wolverine Error Queue Is Non-Empty
 
@@ -70,7 +54,6 @@ Use the relevant database:
 - `alpha_asset`
 - `alpha_alarm`
 - `alpha_reporting`
-- `alpha_gateway` is not used in v1
 
 Triage:
 
@@ -92,34 +75,45 @@ docker compose exec -T postgres psql -U alpha -d alpha_telemetry -c \
 
 Diagnosis:
 
-- Broker down: `docker compose ps mosquitto` and `docker compose logs --tail 100 mosquitto`.
-- Consumer down: `docker compose ps telemetry asset alarm gateway`.
+- Broker down: `docker compose ps nats` and `docker compose logs --tail 100 nats`.
+- Consumer down: `docker compose ps telemetry asset alarm gateway reporting`.
 - Schema mismatch: check consumer logs for version or JSON mapping failures.
 - Slow handler: check the service database and downstream HTTP dependencies.
 
-## Reporting Queue Is Backed Up
+## Reporting Jobs Are Backed Up
 
-Reporting requests use PostgreSQL-backed Wolverine queues:
+Report jobs use `alpha.report.requested` in the `ALPHA_JOBS` stream:
 
 ```bash
-docker compose exec -T postgres psql -U alpha -d alpha_reporting -c \
-  "select 'requested' as queue, count(*) from wolverine_queues.wolverine_queue_reports_requested
-   union all
-   select 'completed' as queue, count(*) from wolverine_queues.wolverine_queue_reports_completed;"
+curl -fsS "http://localhost:8222/jsz?streams=true&consumers=true" | jq '.account_details[].stream_detail[] | select(.name=="ALPHA_JOBS")'
 ```
 
-If `reports_requested` grows, restart `reporting`. If `reports_completed` grows, restart `gateway`.
+If pending messages grow, restart `reporting`. If completed events are not reaching the UI, restart `gateway` and inspect `ALPHA_DOMAIN`.
 
-## Roll Back Messaging Cleanup
+## Raw Telemetry Is Not Flowing
 
-The legacy HTTP telemetry fan-out path has been removed. After this cleanup,
-rollback is a code rollback, not a runtime flag:
+Inspect the edge stream:
 
 ```bash
-git revert <cleanup-commit>
+curl -fsS "http://localhost:8222/jsz?streams=true&consumers=true" | jq '.account_details[].stream_detail[] | select(.name=="ALPHA_EDGE")'
+docker compose logs --tail 200 telemetry
+docker compose logs --tail 200 edge
+```
+
+Common causes:
+
+- Edge publisher credentials do not match the NATS MQTT listener.
+- The topic does not match `alpha/{tenant}/{site}/{unit}/telemetry`.
+- The tenant/site/unit/tag keys do not resolve through Tenant, Asset, or Tag Catalog.
+- The payload schema version has an unsupported major version.
+
+## Roll Back Messaging Changes
+
+The legacy broker/queue path has been removed. Rollback is a code rollback, not a runtime flag:
+
+```bash
+git revert <migration-commit>
 docker compose up --build -d
 ```
 
-Use this only if the MQTT normalization path itself is defective. For broker or
-consumer outages, prefer the DLQ, outbox, and service-restart procedures above
-so telemetry is replayed through the durable inbox/outbox path.
+Use rollback only if the NATS normalization path itself is defective. For broker or consumer outages, prefer the JetStream, Wolverine error queue, and service-restart procedures above.

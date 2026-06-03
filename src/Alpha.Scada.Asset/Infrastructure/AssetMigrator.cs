@@ -1,13 +1,14 @@
+using Alpha.Scada.ServiceDefaults;
 using Npgsql;
 
 namespace Alpha.Scada.Asset.Infrastructure;
 
-public sealed class AssetMigrator(NpgsqlDataSource dataSource, ILogger<AssetMigrator> logger)
+public sealed class AssetMigrator(NpgsqlDataSource dataSource, ILogger<AssetMigrator> logger) :
+    SqlDatabaseMigrator(dataSource, logger)
 {
-    public async Task MigrateAsync(CancellationToken cancellationToken)
-    {
-        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        await using var command = new NpgsqlCommand("""
+    protected override IReadOnlyList<SqlMigration> Migrations { get; } =
+    [
+        new("001_initial", """
             create table if not exists sites (
                 id uuid primary key,
                 tenant_id uuid not null,
@@ -46,8 +47,6 @@ public sealed class AssetMigrator(NpgsqlDataSource dataSource, ILogger<AssetMigr
 
             create index if not exists ix_sites_tenant on sites(tenant_id);
             create index if not exists ix_units_tenant_site on units(tenant_id, site_id);
-            """, connection);
-        await command.ExecuteNonQueryAsync(cancellationToken);
-        logger.LogInformation("Asset database is ready.");
-    }
+            """)
+    ];
 }

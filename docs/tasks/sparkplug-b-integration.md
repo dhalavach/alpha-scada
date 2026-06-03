@@ -10,7 +10,7 @@
 
 ## 1. Context & Goal
 
-Today the platform ingests telemetry via a **custom JSON MQTT contract** (`alpha/{tenantKey}/{siteKey}/{unitKey}/telemetry`, `TelemetryEnvelopeV1`) normalized by the Telemetry service. Sparkplug B is currently listed as a known gap in `system-overview.md`.
+Today the platform ingests telemetry through the **NATS MQTT listener** using a custom JSON MQTT contract (`alpha/{tenantKey}/{siteKey}/{unitKey}/telemetry`, `TelemetryEnvelopeV1`) normalized by the Telemetry service. Sparkplug B is currently listed as a known gap in `system-overview.md`.
 
 **Goal:** Accept telemetry from Sparkplug B–compliant edge nodes/devices **without rearchitecting the platform** — by translating Sparkplug into the existing canonical pipeline. The internal `TelemetryEnvelopeV1` contract and all downstream services (Telemetry, Alarm, Asset, Reporting, Gateway/SignalR) remain unchanged.
 
@@ -95,7 +95,7 @@ Sparkplug DATA messages are **not** self-contained: a DDATA typically carries **
 
 **Phase 0 — Spike / proof (1–2 days)**
 - [ ] Generate C# from `sparkplug_b.proto`; decode a real NBIRTH+DDATA captured from Ignition/Tahu.
-- [ ] Confirm transport choice: Wolverine MQTT wraps its own envelope/serialization — **likely cannot consume raw Sparkplug protobuf**, so the Sparkplug listener probably needs a **raw MQTTnet client**, handing decoded batches to the internal bus. Validate. *(decision §6.4)*
+- [ ] Confirm transport choice: Sparkplug protobuf payloads are raw MQTT messages, so the Sparkplug listener should consume from the NATS MQTT/JetStream path and hand decoded batches to the canonical telemetry pipeline. Validate exact client choice. *(decision §6.4)*
 
 **Phase 1 — Adapter ingestion, stateful (core — ~1–1.5 weeks)**
 - [ ] New host project `Alpha.Scada.Edge.Sparkplug` (or extend Edge) — own MQTTnet client, `spBv1.0/#` subscription, correct per-type QoS.
@@ -112,7 +112,7 @@ Sparkplug DATA messages are **not** self-contained: a DDATA typically carries **
 - [ ] (If Primary Host, §6.2) publish retained **JSON STATE**; manage host online/offline, MQTT Will as offline STATE, and re-establish on reconnect.
 
 **Phase 3 — Ops, security, docs (~3–5 days)**
-- [ ] **Tenant isolation:** per-edge MQTT credentials + Mosquitto ACLs so an edge can only publish into its own Group namespace (the Sparkplug Group space is flat; without this, one tenant's node could publish into another's group).
+- [ ] **Tenant isolation:** per-edge NATS/MQTT credentials and subject permissions so an edge can only publish into its own Group namespace (the Sparkplug Group space is flat; without this, one tenant's node could publish into another's group).
 - [ ] Adapter ACLs for `spBv1.0/#`, STATE topic (if host), and Rebirth NCMD topics.
 - [ ] Config flags to enable/disable Sparkplug per deployment; Compose + k3s wiring.
 - [ ] **ADR** (`docs/architecture-decisions/00X-sparkplug-b.md`) + update `system-overview.md` (move out of Known Limitations) and README MQTT contract section.
@@ -125,7 +125,7 @@ Sparkplug DATA messages are **not** self-contained: a DDATA typically carries **
 1. **Adapter placement** — new `Alpha.Scada.Edge.Sparkplug` project, or extend the existing Edge service? *(Recommend: new project, optional per deployment.)*
 2. **Is Alpha a Sparkplug Primary Host** (publishes JSON STATE, manages host session) or a **passive consumer**? *(Passive is simpler for v1; Primary Host is required if edge nodes are configured to gate publishing on consumer availability.)*
 3. **ID mapping strategy** — convention (encode tenant/site/unit in Group/Node/Device IDs) vs a **mapping table** (in Asset or Tag Catalog). *(Recommend: mapping table; real-world Sparkplug IDs rarely match our keys.)*
-4. **Transport** — confirm raw MQTTnet for the Sparkplug side vs forcing it through Wolverine. *(Phase 0 validates.)*
+4. **Transport** — confirm raw NATS/MQTT consumption for the Sparkplug side vs forcing it through Wolverine. *(Phase 0 validates.)*
 5. **Outbound scope** — confirm DCMD and device-write NCMD stay deferred, while **`NCMD Node Control/Rebirth` is in scope** (required for recovery, §4.1). 
 6. **Non-numeric / complex metrics** — decode-and-ignore in v1 (recommended), or store? Storing implies a non-`double` value path, which ripples into `TelemetryEnvelopeV1`, alarm evaluation, and the UI (all assume `double`) — a larger fork than a single column.
 7. **RBE emit shape** — merged full snapshot per emit (recommended, preserves downstream semantics) vs changed-tags-only (cheaper, partial batches to alarm eval).
@@ -147,7 +147,7 @@ Sparkplug DATA messages are **not** self-contained: a DDATA typically carries **
 ## 8. Risks
 
 - **Statefulness is the real cost.** RBE + aliasing + cold-start recovery make this a stateful translator with a recovery protocol, not a format shim — the bulk of the effort and the main correctness risk.
-- Wolverine MQTT likely incompatible with raw Sparkplug protobuf → separate MQTTnet client (added moving part).
+- Sparkplug protobuf should stay outside Wolverine's native envelope handling, which likely means a raw NATS/MQTT consumer feeding the canonical pipeline.
 - Primary Host + JSON STATE + rebirth handling is the trickiest compliance surface; defer (passive consumer) if acceptable.
 - High-frequency Sparkplug data + minute-grained, single-default-partition history → strengthens the case for **TimescaleDB** (currently deferred).
 - ID/metric mapping is the main integration-friction point; needs client-specific config.

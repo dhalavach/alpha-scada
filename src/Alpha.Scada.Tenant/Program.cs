@@ -6,31 +6,20 @@ const string serviceName = "alpha-scada-tenant";
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddServiceDatabase(builder.Configuration);
-builder.Services.AddSingleton<TenantMigrator>();
+builder.Services.AddAlphaMigrator<TenantMigrator>();
 builder.Services.AddSingleton<TenantRepository>();
 builder.Services.AddSingleton<TenantService>();
-builder.Services.AddJwtTokenService(builder.Configuration);
+builder.Services.AddAlphaJwtAuthentication(builder.Configuration);
 
 var app = builder.Build();
-await app.Services.GetRequiredService<TenantMigrator>().MigrateAsync(CancellationToken.None);
+await app.ApplyAlphaMigrationsAsync();
+app.UseAlphaAuthorization();
+app.MapAlphaOperationalEndpoints(serviceName);
 
-app.MapGet("/health", () => Results.Ok(new { status = "ok", service = serviceName, utc = DateTimeOffset.UtcNow }));
-app.MapGet("/ready", (Npgsql.NpgsqlDataSource dataSource, CancellationToken cancellationToken) =>
-    MinimalApi.ReadyAsync(dataSource, cancellationToken));
-app.MapGet("/metrics", (Npgsql.NpgsqlDataSource dataSource, CancellationToken cancellationToken) =>
-    MinimalApi.MetricsAsync(serviceName, dataSource, cancellationToken));
-
-app.MapGet("/internal/v1/tenants", async (HttpContext context, JwtTokenService tokens, TenantService service) =>
-{
-    var user = HttpUserContext.FromBearerToken(context.Request.Headers, tokens);
-    if (user is null)
-    {
-        return Results.Unauthorized();
-    }
-
-    var tenants = await service.GetTenantsAsync(user, context.RequestAborted);
-    return Results.Ok(tenants);
-});
+app.MapGroup("/internal/v1")
+    .RequireAuthorization()
+    .MapGet("/tenants", async (AuthenticatedUser user, TenantService service, HttpContext context) =>
+        Results.Ok(await service.GetTenantsAsync(user.Current, context.RequestAborted)));
 
 app.MapGet("/internal/v1/tenants/resolve/{tenantKey}", async (string tenantKey, TenantService service, CancellationToken cancellationToken) =>
 {

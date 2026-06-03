@@ -1,13 +1,14 @@
+using Alpha.Scada.ServiceDefaults;
 using Npgsql;
 
 namespace Alpha.Scada.Reporting.Infrastructure;
 
-public sealed class ReportingMigrator(NpgsqlDataSource dataSource, ILogger<ReportingMigrator> logger)
+public sealed class ReportingMigrator(NpgsqlDataSource dataSource, ILogger<ReportingMigrator> logger) :
+    SqlDatabaseMigrator(dataSource, logger)
 {
-    public async Task MigrateAsync(CancellationToken cancellationToken)
-    {
-        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        await using var command = new NpgsqlCommand("""
+    protected override IReadOnlyList<SqlMigration> Migrations { get; } =
+    [
+        new("001_initial", """
             create table if not exists report_runs (
                 id uuid primary key,
                 tenant_id uuid not null,
@@ -23,8 +24,6 @@ public sealed class ReportingMigrator(NpgsqlDataSource dataSource, ILogger<Repor
                 generated_at_utc timestamptz not null,
                 unique (unit_id, period)
             );
-            """, connection);
-        await command.ExecuteNonQueryAsync(cancellationToken);
-        logger.LogInformation("Reporting database is ready.");
-    }
+            """)
+    ];
 }

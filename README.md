@@ -1,6 +1,6 @@
 # Alpha SCADA Platform
 
-Alpha SCADA is a lightweight open-source SCADA platform for small industrial energy sites. It provides browser-based monitoring, MQTT telemetry ingestion, alarms, reporting, and a low-cost Docker/k3s deployment path.
+Alpha SCADA is a lightweight open-source SCADA platform for small industrial energy sites. It provides browser-based monitoring, NATS-backed edge telemetry ingestion, alarms, reporting, and a low-cost Docker/k3s deployment path.
 
 For the detailed architecture, service map, data flows, and code navigation guide, see [docs/system-overview.md](docs/system-overview.md).
 
@@ -9,14 +9,14 @@ For the detailed architecture, service map, data flows, and code navigation guid
 - React/Vite browser UI served through nginx.
 - ASP.NET Core `.NET 10` Gateway/BFF plus eight domain services.
 - Separate PostgreSQL databases per service in local Compose.
-- Mosquitto MQTT broker for edge telemetry and operational events.
-- Wolverine messaging for durable report jobs, event handling, inbox/outbox, retries, and error queues.
+- NATS Server with JetStream for edge ingress, domain events, and report jobs.
+- Wolverine messaging for handlers, inbox/outbox, retries, and error queues.
 - Local user auth with signed JWTs, PBKDF2 password hashing, and fixed roles.
 - Optional development simulator for a generic Combined Heat and Power Unit.
 
 ## Quickstart
 
-Generate local secrets and Mosquitto credentials:
+Generate local secrets:
 
 ```bash
 ops/scripts/dev-setup.sh

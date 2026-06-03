@@ -10,10 +10,10 @@ It creates a gitignored `.env` file with:
 
 ```text
 JWT_SECRET
-MQTT_USER_* and MQTT_PASSWORD_*
+NATS_USER_* and NATS_PASSWORD_*
 ```
 
-It also generates `ops/mosquitto/passwords`, which is required because the local Mosquitto broker runs with anonymous access disabled and ACLs enabled.
+The local NATS config uses simple development users for the edge MQTT listener and service-to-service NATS clients. Replace them with deployment-managed secrets before a customer rollout.
 
 The default Compose stack enables development demo users in the Identity service.
 

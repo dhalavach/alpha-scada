@@ -14,25 +14,13 @@ ensure_value() {
   fi
 }
 
-random_password() {
-  openssl rand -hex 24
-}
-
 ensure_value "JWT_SECRET" "$(openssl rand -base64 48 | tr -d '\n')"
 
-ensure_value "MQTT_USER_EDGE" "edge"
-ensure_value "MQTT_PASSWORD_EDGE" "$(random_password)"
-ensure_value "MQTT_USER_TELEMETRY" "telemetry"
-ensure_value "MQTT_PASSWORD_TELEMETRY" "$(random_password)"
-ensure_value "MQTT_USER_ALARM" "alarm"
-ensure_value "MQTT_PASSWORD_ALARM" "$(random_password)"
-ensure_value "MQTT_USER_ASSET" "asset"
-ensure_value "MQTT_PASSWORD_ASSET" "$(random_password)"
-ensure_value "MQTT_USER_GATEWAY" "gateway"
-ensure_value "MQTT_PASSWORD_GATEWAY" "$(random_password)"
-ensure_value "MQTT_USER_ADMIN" "admin"
-ensure_value "MQTT_PASSWORD_ADMIN" "$(random_password)"
-
-"$root_dir/ops/scripts/mosquitto-setup.sh"
+ensure_value "NATS_USER_EDGE" "edge"
+ensure_value "NATS_PASSWORD_EDGE" "edge-pass"
+ensure_value "NATS_USER_SERVICES" "services"
+ensure_value "NATS_PASSWORD_SERVICES" "services-pass"
+ensure_value "NATS_USER_ADMIN" "admin"
+ensure_value "NATS_PASSWORD_ADMIN" "admin-pass"
 
 echo "Development secrets are ready in $env_file"
