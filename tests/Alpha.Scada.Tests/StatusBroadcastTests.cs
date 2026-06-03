@@ -71,7 +71,7 @@ public sealed class StatusBroadcastTests
 
     private static IContainer PostgresContainer() =>
         new ContainerBuilder()
-            .WithImage("postgres:16-alpine")
+            .WithImage(TestImages.Postgres)
             .WithEnvironment("POSTGRES_DB", "alpha_test")
             .WithEnvironment("POSTGRES_USER", "alpha")
             .WithEnvironment("POSTGRES_PASSWORD", "alpha-pass")

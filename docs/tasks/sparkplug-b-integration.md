@@ -149,7 +149,7 @@ Sparkplug DATA messages are **not** self-contained: a DDATA typically carries **
 - **Statefulness is the real cost.** RBE + aliasing + cold-start recovery make this a stateful translator with a recovery protocol, not a format shim — the bulk of the effort and the main correctness risk.
 - Sparkplug protobuf should stay outside Wolverine's native envelope handling, which likely means a raw NATS/MQTT consumer feeding the canonical pipeline.
 - Primary Host + JSON STATE + rebirth handling is the trickiest compliance surface; defer (passive consumer) if acceptable.
-- High-frequency Sparkplug data + minute-grained, single-default-partition history → strengthens the case for **TimescaleDB** (currently deferred).
+- High-frequency Sparkplug data should land on the existing **TimescaleDB** historian path so retention, compression, and continuous aggregates stay consistent with the JSON telemetry contract.
 - ID/metric mapping is the main integration-friction point; needs client-specific config.
 
 ---

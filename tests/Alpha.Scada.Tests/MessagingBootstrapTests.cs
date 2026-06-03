@@ -19,7 +19,7 @@ public sealed class MessagingBootstrapTests
         try
         {
             var postgres = new ContainerBuilder()
-                .WithImage("postgres:16-alpine")
+                .WithImage(TestImages.Postgres)
                 .WithEnvironment("POSTGRES_DB", "alpha_test")
                 .WithEnvironment("POSTGRES_USER", "alpha")
                 .WithEnvironment("POSTGRES_PASSWORD", "alpha-pass")

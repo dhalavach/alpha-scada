@@ -162,7 +162,7 @@ public sealed class BackendRepositoryTests
     private static async Task WithPostgresAsync(Func<string, Task> run)
     {
         var postgres = new ContainerBuilder()
-            .WithImage("postgres:16-alpine")
+            .WithImage(TestImages.Postgres)
             .WithEnvironment("POSTGRES_DB", "alpha_test")
             .WithEnvironment("POSTGRES_USER", "alpha")
             .WithEnvironment("POSTGRES_PASSWORD", "alpha-pass")

@@ -34,8 +34,8 @@ public static class MinimalApi
         metrics.AppendLine("# HELP alpha_scada_wolverine_error_queue_depth Wolverine dead-lettered envelopes by service");
         metrics.AppendLine("# TYPE alpha_scada_wolverine_error_queue_depth gauge");
         metrics.AppendLine(CultureInfo.InvariantCulture, $"alpha_scada_wolverine_error_queue_depth{{service=\"{serviceLabel}\"}} {errorQueueDepth}");
-        metrics.AppendLine("# HELP alpha_scada_telemetry_samples_written_total Persisted telemetry samples visible to this service database");
-        metrics.AppendLine("# TYPE alpha_scada_telemetry_samples_written_total counter");
+        metrics.AppendLine("# HELP alpha_scada_telemetry_samples_written_total Approximate persisted telemetry samples visible to this service database");
+        metrics.AppendLine("# TYPE alpha_scada_telemetry_samples_written_total gauge");
         metrics.AppendLine(CultureInfo.InvariantCulture, $"alpha_scada_telemetry_samples_written_total{{service=\"{serviceLabel}\"}} {telemetrySamples}");
 
         return Results.Text(metrics.ToString(), "text/plain; version=0.0.4; charset=utf-8");
@@ -55,7 +55,7 @@ public static class MinimalApi
         {
             "wolverine.wolverine_outgoing_envelopes" => "select count(*) from wolverine.wolverine_outgoing_envelopes",
             "wolverine.wolverine_dead_letters" => "select count(*) from wolverine.wolverine_dead_letters",
-            "public.telemetry_samples" => "select count(*) from public.telemetry_samples",
+            "public.telemetry_samples" => "select approximate_row_count('public.telemetry_samples'::regclass)",
             _ => throw new ArgumentOutOfRangeException(nameof(tableName), tableName, "Unsupported metrics table.")
         };
 

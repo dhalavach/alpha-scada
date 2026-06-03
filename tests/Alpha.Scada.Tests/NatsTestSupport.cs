@@ -21,7 +21,7 @@ internal static class NatsTestSupport
             """);
 
         var nats = new ContainerBuilder()
-            .WithImage("nats:2.12-alpine")
+            .WithImage(TestImages.Nats)
             .WithBindMount(tempDir, "/etc/nats", AccessMode.ReadOnly)
             .WithPortBinding(4222, true)
             .WithPortBinding(1883, true)

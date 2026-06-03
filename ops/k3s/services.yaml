@@ -317,6 +317,8 @@ spec:
               value: http://asset:8080
             - name: Services__TagCatalog
               value: http://tag-catalog:8080
+            - name: Timescale__RetentionDays
+              value: "365"
           ports:
             - containerPort: 8080
           readinessProbe:

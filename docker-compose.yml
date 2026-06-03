@@ -138,6 +138,7 @@ services:
       Services__Tenant: http://tenant:8080
       Services__Asset: http://asset:8080
       Services__TagCatalog: http://tag-catalog:8080
+      Timescale__RetentionDays: "365"
     networks:
       - alpha-internal
     depends_on:
@@ -252,7 +253,7 @@ services:
       - gateway
 
   postgres:
-    image: postgres:16-alpine
+    image: timescale/timescaledb:2.17.2-pg16
     environment:
       POSTGRES_DB: alpha_identity
       POSTGRES_USER: alpha

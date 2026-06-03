@@ -45,6 +45,36 @@ public sealed class ReportOntologyConfigTests
     }
 
     [Fact]
+    public async Task Telemetry_migrator_creates_timescale_storage_objects()
+    {
+        await WithPostgresAsync(async connectionString =>
+        {
+            await using var dataSource = NpgsqlDataSource.Create(connectionString);
+            await new TelemetryMigrator(dataSource, NullLogger<TelemetryMigrator>.Instance).MigrateAsync(CancellationToken.None);
+
+            var hypertableCount = await ScalarLongAsync(
+                connectionString,
+                """
+                select count(*)
+                from timescaledb_information.hypertables
+                where hypertable_schema = 'public'
+                  and hypertable_name = 'telemetry_samples'
+                """);
+            var continuousAggregateCount = await ScalarLongAsync(
+                connectionString,
+                """
+                select count(*)
+                from timescaledb_information.continuous_aggregates
+                where view_schema = 'public'
+                  and view_name = 'telemetry_minute'
+                """);
+
+            Assert.Equal(1, hypertableCount);
+            Assert.Equal(1, continuousAggregateCount);
+        });
+    }
+
+    [Fact]
     public async Task Telemetry_report_aggregate_uses_configured_tag_ids_not_tag_keys()
     {
         await WithPostgresAsync(async connectionString =>
@@ -189,7 +219,7 @@ public sealed class ReportOntologyConfigTests
     private static async Task WithPostgresAsync(Func<string, Task> run)
     {
         var postgres = new ContainerBuilder()
-            .WithImage("postgres:16-alpine")
+            .WithImage(TestImages.Postgres)
             .WithEnvironment("POSTGRES_DB", "alpha_test")
             .WithEnvironment("POSTGRES_USER", "alpha")
             .WithEnvironment("POSTGRES_PASSWORD", "alpha-pass")
@@ -232,5 +262,14 @@ public sealed class ReportOntologyConfigTests
                 await Task.Delay(500);
             }
         }
+    }
+
+    private static async Task<long> ScalarLongAsync(string connectionString, string sql)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand(sql, connection);
+        var value = await command.ExecuteScalarAsync();
+        return Convert.ToInt64(value);
     }
 }

@@ -145,13 +145,11 @@ public sealed class TelemetryRepository
                     as b(metric_key, tag_id, aggregation_type, scale, threshold, has_threshold)
             ),
             minute_samples as (
-                select tag_id, date_trunc('minute', timestamp_utc) as minute_utc, avg(value_double) as value_avg
-                from telemetry_samples
-                where unit_id = @unit_id
-                  and timestamp_utc >= @period_start
-                  and timestamp_utc < @period_end
+                select tag_id, minute_utc, value_avg
+                from telemetry_minute
+                where minute_utc >= @period_start
+                  and minute_utc < @period_end
                   and tag_id = any(@tag_ids)
-                group by tag_id, date_trunc('minute', timestamp_utc)
             )
             select b.metric_key,
                    case b.aggregation_type
@@ -162,7 +160,6 @@ public sealed class TelemetryRepository
             left join minute_samples m on m.tag_id = b.tag_id
             group by b.metric_key, b.aggregation_type, b.scale, b.threshold, b.has_threshold
             """, connection);
-        command.Parameters.AddWithValue("unit_id", unitId);
         command.Parameters.AddWithValue("period_start", range.StartUtc);
         command.Parameters.AddWithValue("period_end", range.EndUtc);
         command.Parameters.Add(new NpgsqlParameter("metric_keys", NpgsqlDbType.Array | NpgsqlDbType.Text) { Value = metricKeys });

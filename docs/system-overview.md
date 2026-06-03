@@ -63,7 +63,7 @@ flowchart LR
     Asset --> DbAsset[("alpha_asset")]
     TagCatalog --> DbTags[("alpha_tag_catalog")]
     Edge --> DbEdge[("alpha_edge")]
-    Telemetry --> DbTelemetry[("alpha_telemetry")]
+    Telemetry --> DbTelemetry[("alpha_telemetry<br/>Timescale hypertables")]
     Alarm --> DbAlarm[("alpha_alarm")]
     Reporting --> DbReporting[("alpha_reporting")]
 ```
@@ -78,7 +78,7 @@ flowchart LR
 | Asset | `src/Alpha.Scada.Asset` | Sites, units, unit status, unit key resolution, stale unit transitions, communication-loss monitor | `Application/AssetService.cs`, `Application/CommunicationLossMonitorWorker.cs`, `Infrastructure/AssetRepository.cs` |
 | Tag Catalog | `src/Alpha.Scada.TagCatalog` | Subsystems, tag definitions, engineering units, threshold metadata | `Application/TagCatalogService.cs`, `Infrastructure/TagCatalogRepository.cs` |
 | Edge | `src/Alpha.Scada.Edge` | Optional development simulator and edge/device telemetry publishing boundary | `Application/ChpUnitSimulatorWorker.cs` |
-| Telemetry | `src/Alpha.Scada.Telemetry` | Raw edge telemetry normalization, current tag values, partitioned telemetry history, report aggregates | `Application/TelemetryEdgeIngestionWorker.cs`, `Application/CatalogCache.cs`, `Infrastructure/TelemetryRepository.cs` |
+| Telemetry | `src/Alpha.Scada.Telemetry` | Raw edge telemetry normalization, current tag values, TimescaleDB telemetry history, report aggregates | `Application/TelemetryEdgeIngestionWorker.cs`, `Application/CatalogCache.cs`, `Infrastructure/TelemetryRepository.cs` |
 | Alarm | `src/Alpha.Scada.Alarm` | Alarm evaluation, active/acknowledged/cleared lifecycle, alarm counts | `Domain/AlarmRule.cs`, `Application/AlarmService.cs`, `Infrastructure/AlarmRepository.cs` |
 | Reporting | `src/Alpha.Scada.Reporting` | Monthly report generation and report run persistence | `Application/ReportingService.cs`, `Infrastructure/ReportingRepository.cs` |
 
@@ -110,7 +110,7 @@ Gateway and Edge are intentionally thinner:
 
 ## Data Ownership
 
-Development uses one PostgreSQL container, but each service has a separate logical database:
+Development uses one TimescaleDB/PostgreSQL container, but each service has a separate logical database:
 
 | Database | Owner |
 | --- | --- |
@@ -119,7 +119,7 @@ Development uses one PostgreSQL container, but each service has a separate logic
 | `alpha_asset` | Asset |
 | `alpha_tag_catalog` | Tag Catalog |
 | `alpha_edge` | Edge |
-| `alpha_telemetry` | Telemetry |
+| `alpha_telemetry` | Telemetry; `telemetry_samples` is a Timescale hypertable |
 | `alpha_alarm` | Alarm |
 | `alpha_reporting` | Reporting |
 
@@ -129,6 +129,13 @@ Rules:
 - Cross-service data access goes through HTTP internal APIs.
 - Database schemas are created by service migrators at startup.
 - `ops/postgres/init.sql` creates the logical databases for local/dev.
+
+Telemetry storage uses the TimescaleDB extension:
+
+- `telemetry_samples` is converted to a hypertable partitioned by `timestamp_utc`;
+- retention is controlled by `Timescale:RetentionDays` and defaults to 365 days;
+- samples are compressed after 7 days;
+- monthly report aggregation reads from the real-time `telemetry_minute` continuous aggregate instead of scanning raw samples.
 
 ## Runtime Data Flows
 
@@ -309,7 +316,7 @@ GET /metrics
 The metrics endpoint includes a compatibility `*_up` gauge plus shared
 `alpha_scada_service_up`, `alpha_scada_wolverine_outbox_depth`,
 `alpha_scada_wolverine_error_queue_depth`, and
-`alpha_scada_telemetry_samples_written_total` metrics where the service
+approximate `alpha_scada_telemetry_samples_written_total` metrics where the service
 database has the relevant tables.
 
 Local observability files:
@@ -359,6 +366,7 @@ The k3s manifests are intentionally simple:
 
 - one replica per service;
 - one PostgreSQL deployment for pilot use;
+- the PostgreSQL image is TimescaleDB-enabled so telemetry hypertables and continuous aggregates can be created;
 - one NATS deployment with JetStream enabled;
 - no HA clustering yet;
 - no multi-region deployment yet.
@@ -400,7 +408,6 @@ Expected non-blocking warnings:
 Current known gaps and deferred capabilities:
 
 - Sparkplug B.
-- TimescaleDB.
 - Moving database migrations out of application startup.
 - Gateway forwarding cleanup/resilience policies for downstream HTTP calls.
 - Row-level security in PostgreSQL.
