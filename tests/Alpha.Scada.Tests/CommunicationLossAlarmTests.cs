@@ -121,6 +121,9 @@ public sealed class CommunicationLossAlarmTests
                 services.AddSingleton<AlarmMigrator>();
                 services.AddSingleton<AlarmRepository>();
                 services.AddSingleton<AlarmService>();
+                services.AddSingleton<AlarmOutboxDispatcher>();
+                services.AddSingleton<IAlarmOutboxSignal>(provider => provider.GetRequiredService<AlarmOutboxDispatcher>());
+                services.AddHostedService(provider => provider.GetRequiredService<AlarmOutboxDispatcher>());
                 services.AddSingleton<UnitKeyResolver>();
                 services.AddMemoryCache();
                 services.AddAlphaServiceClients(

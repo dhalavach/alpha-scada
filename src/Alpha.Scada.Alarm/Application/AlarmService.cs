@@ -8,7 +8,8 @@ namespace Alpha.Scada.Alarm.Application;
 public sealed class AlarmService(
     AlarmRepository repository,
     UnitKeyResolver unitKeyResolver,
-    NpgsqlDataSource dataSource)
+    NpgsqlDataSource dataSource,
+    IAlarmOutboxSignal outboxSignal)
 {
     public async Task<AlarmEventBatch> EvaluateAsync(AlarmEvaluationRequest request, CancellationToken cancellationToken)
     {
@@ -17,7 +18,13 @@ public sealed class AlarmService(
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
         var changes = await repository.EvaluateAsync(connection, transaction, request, cancellationToken);
         var events = ToAlarmEvents(changes, route);
+        await repository.EnqueueOutboxAsync(connection, transaction, events.All, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        if (events.HasEvents)
+        {
+            outboxSignal.Kick();
+        }
+
         return events;
     }
 
@@ -29,8 +36,19 @@ public sealed class AlarmService(
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
         var alarm = await repository.RaiseCommunicationLostAsync(connection, transaction, unit, cancellationToken);
+        var raised = alarm is null ? null : ToRaised(alarm, route);
+        if (raised is not null)
+        {
+            await repository.EnqueueOutboxAsync(connection, transaction, [raised], cancellationToken);
+        }
+
         await transaction.CommitAsync(cancellationToken);
-        return alarm is null ? null : ToRaised(alarm, route);
+        if (raised is not null)
+        {
+            outboxSignal.Kick();
+        }
+
+        return raised;
     }
 
     public Task<AlarmRaised?> RaiseCommunicationLostAsync(UnitDto unit, CancellationToken cancellationToken) =>
@@ -66,7 +84,9 @@ public sealed class AlarmService(
             route.UnitKey,
             user.UserId,
             alarm.AcknowledgedAtUtc ?? DateTimeOffset.UtcNow);
+        await repository.EnqueueOutboxAsync(connection, transaction, [acknowledged], cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        outboxSignal.Kick();
         return acknowledged;
     }
 
@@ -112,4 +132,9 @@ public sealed class AlarmService(
 
 public sealed record AlarmEventBatch(
     IReadOnlyCollection<AlarmRaised> Raised,
-    IReadOnlyCollection<AlarmCleared> Cleared);
+    IReadOnlyCollection<AlarmCleared> Cleared)
+{
+    public bool HasEvents => Raised.Count > 0 || Cleared.Count > 0;
+
+    public IEnumerable<object> All => Raised.Cast<object>().Concat(Cleared);
+}

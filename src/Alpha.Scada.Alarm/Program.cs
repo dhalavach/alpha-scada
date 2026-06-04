@@ -4,7 +4,6 @@ using Alpha.Scada.Alarm.Infrastructure;
 using Alpha.Scada.Contracts;
 using Alpha.Scada.ServiceDefaults;
 using Alpha.Scada.ServiceDefaults.Messaging;
-using Wolverine;
 
 const string serviceName = "alpha-scada-alarm";
 
@@ -13,6 +12,9 @@ builder.Services.AddServiceDatabase(builder.Configuration);
 builder.Services.AddAlphaMigrator<AlarmMigrator>();
 builder.Services.AddSingleton<AlarmRepository>();
 builder.Services.AddSingleton<AlarmService>();
+builder.Services.AddSingleton<AlarmOutboxDispatcher>();
+builder.Services.AddSingleton<IAlarmOutboxSignal>(provider => provider.GetRequiredService<AlarmOutboxDispatcher>());
+builder.Services.AddHostedService(provider => provider.GetRequiredService<AlarmOutboxDispatcher>());
 builder.Services.AddSingleton<UnitKeyResolver>();
 builder.Services.AddSingleton<ThresholdCache>();
 builder.Services.AddMemoryCache();
@@ -34,7 +36,7 @@ var internalApi = app.MapGroup("/internal/v1").RequireAuthorization();
 internalApi.MapGet("/alarms/active", async (AuthenticatedUser user, AlarmService service, HttpContext context) =>
     Results.Ok(await service.GetActiveAsync(user.Current, context.RequestAborted)));
 
-internalApi.MapPost("/alarms/{alarmId:guid}/ack", async (Guid alarmId, AuthenticatedUser user, AlarmService service, IMessageBus bus, HttpContext context) =>
+internalApi.MapPost("/alarms/{alarmId:guid}/ack", async (Guid alarmId, AuthenticatedUser user, AlarmService service, HttpContext context) =>
 {
     if (!RoleRules.CanAcknowledge(user.Current.Role)) return Results.StatusCode(StatusCodes.Status403Forbidden);
     var acknowledged = await service.AcknowledgeAsync(alarmId, user.Current, context.RequestAborted);
@@ -43,7 +45,6 @@ internalApi.MapPost("/alarms/{alarmId:guid}/ack", async (Guid alarmId, Authentic
         return Results.NotFound();
     }
 
-    await bus.PublishAsync(acknowledged);
     return Results.NoContent();
 });
 

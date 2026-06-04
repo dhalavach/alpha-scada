@@ -199,6 +199,34 @@ public sealed class AlarmRepository
         return Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken));
     }
 
+    public async Task EnqueueOutboxAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        IEnumerable<object> events,
+        CancellationToken cancellationToken)
+    {
+        var messages = events.Select(AlarmOutboxEvents.Serialize).ToArray();
+        if (messages.Length == 0)
+        {
+            return;
+        }
+
+        await using var command = new NpgsqlCommand("""
+            insert into alarm_outbox (id, event_type, payload)
+            select gen_random_uuid(), e.event_type, e.payload::jsonb
+            from unnest(@event_types, @payloads) as e(event_type, payload)
+            """, connection, transaction);
+        command.Parameters.Add(new NpgsqlParameter("event_types", NpgsqlDbType.Array | NpgsqlDbType.Text)
+        {
+            Value = messages.Select(message => message.EventType).ToArray()
+        });
+        command.Parameters.Add(new NpgsqlParameter("payloads", NpgsqlDbType.Array | NpgsqlDbType.Text)
+        {
+            Value = messages.Select(message => message.Payload).ToArray()
+        });
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
     private static async Task<IReadOnlyCollection<AlarmDto>> ReadAlarmsAsync(NpgsqlCommand command, CancellationToken cancellationToken)
     {
         var results = new List<AlarmDto>();

@@ -1,10 +1,9 @@
 using Alpha.Scada.Asset.Contracts;
 using Alpha.Scada.Contracts;
-using Wolverine;
 
 namespace Alpha.Scada.Alarm.Application;
 
-public sealed class UnitStatusAlarmHandler(AlarmService service, IMessageBus bus)
+public sealed class UnitStatusAlarmHandler(AlarmService service)
 {
     public async Task Handle(UnitStatusChanged message, CancellationToken cancellationToken)
     {
@@ -13,7 +12,7 @@ public sealed class UnitStatusAlarmHandler(AlarmService service, IMessageBus bus
             return;
         }
 
-        var raised = await service.RaiseCommunicationLostAsync(new UnitDto(
+        await service.RaiseCommunicationLostAsync(new UnitDto(
             message.UnitId,
             message.TenantId,
             message.SiteId,
@@ -24,12 +23,8 @@ public sealed class UnitStatusAlarmHandler(AlarmService service, IMessageBus bus
             message.LastSeenUtc), new UnitRouteKeys(
                 message.TenantId,
                 message.UnitId,
-                message.TenantKey,
-                message.SiteKey,
-                message.UnitKey), cancellationToken);
-        if (raised is not null)
-        {
-            await bus.PublishAsync(raised);
-        }
+            message.TenantKey,
+            message.SiteKey,
+            message.UnitKey), cancellationToken);
     }
 }

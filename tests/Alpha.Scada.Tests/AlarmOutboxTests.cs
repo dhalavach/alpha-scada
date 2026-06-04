@@ -1,0 +1,425 @@
+using System.Net;
+using System.Net.Sockets;
+using Alpha.Scada.Alarm.Application;
+using Alpha.Scada.Alarm.Contracts;
+using Alpha.Scada.Alarm.Infrastructure;
+using Alpha.Scada.Contracts;
+using Alpha.Scada.ServiceDefaults;
+using Alpha.Scada.ServiceDefaults.Messaging;
+using DotNet.Testcontainers.Builders;
+using DotNet.Testcontainers.Configurations;
+using DotNet.Testcontainers.Containers;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging.Abstractions;
+using NATS.Client.Core;
+using Npgsql;
+using NpgsqlTypes;
+using Wolverine;
+using Wolverine.Nats;
+
+namespace Alpha.Scada.Tests;
+
+public sealed class AlarmOutboxTests
+{
+    private static readonly Guid TenantId = Guid.Parse("10000000-0000-0000-0000-000000000001");
+    private static readonly Guid SiteId = Guid.Parse("20000000-0000-0000-0000-000000000001");
+    private static readonly Guid UnitId = Guid.Parse("30000000-0000-0000-0000-000000000001");
+    private static readonly Guid TagId = Guid.Parse("40000000-0000-0000-0000-000000000001");
+    private static readonly Guid UserId = Guid.Parse("50000000-0000-0000-0000-000000000001");
+
+    [Fact]
+    public async Task Alarm_evaluation_inserts_outbox_row_in_same_transaction_and_dedupes_reprocessing()
+    {
+        var postgres = await StartPostgresAsync();
+        if (postgres is null)
+        {
+            return;
+        }
+
+        await using (postgres)
+        {
+            var connectionString = ConnectionString(postgres);
+            await WaitForPostgresAsync(connectionString);
+
+            await using var routeServer = await FakeRouteServer.StartAsync();
+            await using var dataSource = NpgsqlDataSource.Create(connectionString);
+            await new AlarmMigrator(dataSource, NullLogger<AlarmMigrator>.Instance).MigrateAsync(CancellationToken.None);
+
+            await using var services = BuildServiceProvider(connectionString, routeServer.BaseAddress);
+            var service = services.GetRequiredService<AlarmService>();
+
+            await service.EvaluateAsync(Request(Breaching(TagId)), CancellationToken.None);
+
+            Assert.Equal(1, await CountRowsAsync(connectionString, "alarm_events"));
+            Assert.Equal(1, await CountRowsAsync(connectionString, "alarm_outbox"));
+            Assert.Equal(AlarmOutboxEvents.AlarmRaisedType, await SingleEventTypeAsync(connectionString));
+
+            await service.EvaluateAsync(Request(Breaching(TagId)), CancellationToken.None);
+
+            Assert.Equal(1, await CountRowsAsync(connectionString, "alarm_events"));
+            Assert.Equal(1, await CountRowsAsync(connectionString, "alarm_outbox"));
+        }
+    }
+
+    [Fact]
+    public async Task Alarm_acknowledgement_inserts_outbox_row()
+    {
+        var postgres = await StartPostgresAsync();
+        if (postgres is null)
+        {
+            return;
+        }
+
+        await using (postgres)
+        {
+            var connectionString = ConnectionString(postgres);
+            await WaitForPostgresAsync(connectionString);
+
+            await using var routeServer = await FakeRouteServer.StartAsync();
+            await using var dataSource = NpgsqlDataSource.Create(connectionString);
+            await new AlarmMigrator(dataSource, NullLogger<AlarmMigrator>.Instance).MigrateAsync(CancellationToken.None);
+
+            await using var services = BuildServiceProvider(connectionString, routeServer.BaseAddress);
+            var service = services.GetRequiredService<AlarmService>();
+            var raised = await service.EvaluateAsync(Request(Breaching(TagId)), CancellationToken.None);
+
+            await service.AcknowledgeAsync(
+                raised.Raised.Single().AlarmId,
+                new CurrentUserDto(UserId, TenantId, "operator@alpha.local", "Operator", "Operator"),
+                CancellationToken.None);
+
+            Assert.Equal(2, await CountRowsAsync(connectionString, "alarm_outbox"));
+            Assert.Contains(AlarmOutboxEvents.AlarmAcknowledgedType, await EventTypesAsync(connectionString));
+        }
+    }
+
+    [Fact]
+    public async Task Dispatcher_publishes_pending_rows_marks_dispatched_and_uses_stable_dedup_id()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"alpha-alarm-outbox-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var postgres = await StartPostgresAsync();
+            if (postgres is null)
+            {
+                return;
+            }
+
+            await using (postgres)
+            {
+                var nats = await StartNatsAsync(tempDir);
+                if (nats is null)
+                {
+                    return;
+                }
+
+                await using (nats)
+                {
+                    var connectionString = ConnectionString(postgres);
+                    await WaitForPostgresAsync(connectionString);
+
+                    await using var dataSource = NpgsqlDataSource.Create(connectionString);
+                    await new AlarmMigrator(dataSource, NullLogger<AlarmMigrator>.Instance).MigrateAsync(CancellationToken.None);
+                    var outboxId = await InsertOutboxAsync(connectionString, RaisedEvent());
+
+                    using var host = BuildDispatcherHost(connectionString, NatsTestSupport.Url(nats));
+                    await host.StartAsync();
+                    var dispatcher = host.Services.GetRequiredService<AlarmOutboxDispatcher>();
+
+                    var firstCount = await CountSubjectMessagesAsync(
+                        NatsTestSupport.Url(nats),
+                        Topics.AlarmRaisedEvent,
+                        TimeSpan.FromSeconds(2),
+                        async () => await dispatcher.DispatchPendingAsync(CancellationToken.None));
+
+                    Assert.Equal(1, firstCount);
+                    Assert.Equal(1, await CountDispatchedAsync(connectionString));
+
+                    await ResetOutboxRowAsync(connectionString, outboxId);
+                    var duplicateCount = await CountSubjectMessagesAsync(
+                        NatsTestSupport.Url(nats),
+                        Topics.AlarmRaisedEvent,
+                        TimeSpan.FromSeconds(2),
+                        async () => await dispatcher.DispatchPendingAsync(CancellationToken.None));
+
+                    Assert.Equal(0, duplicateCount);
+                    await host.StopAsync();
+                }
+            }
+        }
+        finally
+        {
+            Directory.Delete(tempDir, recursive: true);
+        }
+    }
+
+    private static ServiceProvider BuildServiceProvider(string connectionString, string routeBaseAddress)
+    {
+        var settings = new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:Postgres"] = connectionString,
+            ["Services:Asset"] = routeBaseAddress,
+            ["Services:Tenant"] = routeBaseAddress
+        };
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
+        var services = new ServiceCollection();
+        services.AddSingleton<IConfiguration>(configuration);
+        services.AddServiceDatabase(configuration);
+        services.AddSingleton<AlarmRepository>();
+        services.AddSingleton<AlarmService>();
+        services.AddSingleton<UnitKeyResolver>();
+        services.AddSingleton<IAlarmOutboxSignal, NoOpOutboxSignal>();
+        services.AddMemoryCache();
+        services.AddAlphaServiceClients(configuration, AlphaServiceClients.Asset, AlphaServiceClients.Tenant);
+        return services.BuildServiceProvider();
+    }
+
+    private static IHost BuildDispatcherHost(string connectionString, string natsUrl)
+    {
+        var settings = new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:Postgres"] = connectionString,
+            ["Nats:Url"] = natsUrl,
+            ["AlarmOutbox:BatchSize"] = "10",
+            ["AlarmOutbox:MaxAttempts"] = "3"
+        };
+
+        return Host.CreateDefaultBuilder()
+            .ConfigureAppConfiguration(config => config.AddInMemoryCollection(settings))
+            .ConfigureServices((context, services) =>
+            {
+                services.AddServiceDatabase(context.Configuration);
+                services.AddSingleton<AlarmOutboxDispatcher>();
+            })
+            .UseAlphaMessaging("alarm-outbox-dispatcher-test", options =>
+            {
+                options.PublishMessage<AlarmRaised>().ToNatsSubject(Topics.AlarmRaisedEvent).UseJetStream(Topics.DomainStream);
+            })
+            .Build();
+    }
+
+    private static AlarmEvaluationRequest Request(params ResolvedTelemetrySample[] samples) =>
+        new(TenantId, UnitId, "Combined Heat and Power Unit 001", samples);
+
+    private static ResolvedTelemetrySample Breaching(Guid tagId) =>
+        new(tagId, "engine.electrical_output_kw", "Electrical Output", "Engine", "kW", 0, 100, 150, "good", DateTimeOffset.UtcNow);
+
+    private static AlarmRaised RaisedEvent() =>
+        new(Guid.NewGuid(), TenantId, UnitId, TagId, "demo-operator", "demo-site", "chp-001", "warning", "Electrical Output above high threshold", DateTimeOffset.UtcNow);
+
+    private static async Task<IContainer?> StartPostgresAsync()
+    {
+        IContainer? postgres = null;
+        try
+        {
+            postgres = new ContainerBuilder()
+                .WithImage(TestImages.Postgres)
+                .WithEnvironment("POSTGRES_DB", "alpha_test")
+                .WithEnvironment("POSTGRES_USER", "alpha")
+                .WithEnvironment("POSTGRES_PASSWORD", "alpha-pass")
+                .WithPortBinding(5432, true)
+                .WithWaitStrategy(Wait.ForUnixContainer().UntilInternalTcpPortIsAvailable(5432))
+                .Build();
+            await postgres.StartAsync();
+            return postgres;
+        }
+        catch (DockerUnavailableException)
+        {
+            if (postgres is not null)
+            {
+                await postgres.DisposeAsync();
+            }
+
+            return null;
+        }
+    }
+
+    private static async Task<IContainer?> StartNatsAsync(string tempDir)
+    {
+        try
+        {
+            return await NatsTestSupport.StartAsync(tempDir);
+        }
+        catch (DockerUnavailableException)
+        {
+            return null;
+        }
+    }
+
+    private static string ConnectionString(IContainer postgres) =>
+        $"Host={postgres.Hostname};Port={postgres.GetMappedPublicPort(5432)};Database=alpha_test;Username=alpha;Password=alpha-pass";
+
+    private static async Task<Guid> InsertOutboxAsync(string connectionString, object message)
+    {
+        var serialized = AlarmOutboxEvents.Serialize(message);
+        var id = Guid.NewGuid();
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand("""
+            insert into alarm_outbox (id, event_type, payload)
+            values (@id, @event_type, @payload)
+            """, connection);
+        command.Parameters.AddWithValue("id", id);
+        command.Parameters.AddWithValue("event_type", serialized.EventType);
+        command.Parameters.Add(new NpgsqlParameter("payload", NpgsqlDbType.Jsonb) { Value = serialized.Payload });
+        await command.ExecuteNonQueryAsync();
+        return id;
+    }
+
+    private static async Task ResetOutboxRowAsync(string connectionString, Guid outboxId)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand("""
+            update alarm_outbox
+            set dispatched_at_utc = null
+            where id = @id
+            """, connection);
+        command.Parameters.AddWithValue("id", outboxId);
+        await command.ExecuteNonQueryAsync();
+    }
+
+    private static async Task<int> CountSubjectMessagesAsync(
+        string natsUrl,
+        string subject,
+        TimeSpan listenFor,
+        Func<Task> action)
+    {
+        await using var connection = new NatsConnection(new NatsOpts
+        {
+            Url = natsUrl,
+            RetryOnInitialConnect = true
+        });
+
+        var count = 0;
+        using var cts = new CancellationTokenSource();
+        var subscription = Task.Run(async () =>
+        {
+            await foreach (var _ in connection.SubscribeAsync<string>(subject, cancellationToken: cts.Token)
+                               .WithCancellation(cts.Token))
+            {
+                Interlocked.Increment(ref count);
+            }
+        }, CancellationToken.None);
+
+        await Task.Delay(250);
+        await action();
+        await Task.Delay(listenFor);
+        await cts.CancelAsync();
+        try
+        {
+            await subscription;
+        }
+        catch (OperationCanceledException)
+        {
+        }
+
+        return count;
+    }
+
+    private static async Task<int> CountRowsAsync(string connectionString, string tableName)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand($"select count(*) from {tableName}", connection);
+        return Convert.ToInt32(await command.ExecuteScalarAsync());
+    }
+
+    private static async Task<int> CountDispatchedAsync(string connectionString)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand("select count(*) from alarm_outbox where dispatched_at_utc is not null", connection);
+        return Convert.ToInt32(await command.ExecuteScalarAsync());
+    }
+
+    private static async Task<string> SingleEventTypeAsync(string connectionString) =>
+        (await EventTypesAsync(connectionString)).Single();
+
+    private static async Task<IReadOnlyCollection<string>> EventTypesAsync(string connectionString)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand("select event_type from alarm_outbox order by occurred_at_utc", connection);
+        var results = new List<string>();
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            results.Add(reader.GetString(0));
+        }
+
+        return results;
+    }
+
+    private static async Task WaitForPostgresAsync(string connectionString)
+    {
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(30);
+        while (true)
+        {
+            try
+            {
+                await using var connection = new NpgsqlConnection(connectionString);
+                await connection.OpenAsync();
+                return;
+            }
+            catch when (DateTimeOffset.UtcNow < deadline)
+            {
+                await Task.Delay(500);
+            }
+        }
+    }
+
+    private sealed class NoOpOutboxSignal : IAlarmOutboxSignal
+    {
+        public void Kick()
+        {
+        }
+    }
+
+    private sealed class FakeRouteServer(WebApplication app) : IAsyncDisposable
+    {
+        public string BaseAddress { get; } = app.Urls.Single();
+
+        public static async Task<FakeRouteServer> StartAsync()
+        {
+            var port = GetFreePort();
+            var builder = WebApplication.CreateSlimBuilder();
+            builder.WebHost.UseUrls($"http://127.0.0.1:{port}");
+            var app = builder.Build();
+
+            app.MapGet("/internal/v1/units/{unitId:guid}/route", (Guid unitId) =>
+                unitId == UnitId
+                    ? Results.Ok(new UnitRouteDto(TenantId, SiteId, UnitId, "demo-site", "chp-001", "Combined Heat and Power Unit 001"))
+                    : Results.NotFound());
+
+            app.MapGet("/internal/v1/tenants/{tenantId:guid}", (Guid tenantId) =>
+                tenantId == TenantId
+                    ? Results.Ok(new TenantDto(TenantId, "demo-operator", "Demo Operator", "EU"))
+                    : Results.NotFound());
+
+            await app.StartAsync();
+            return new FakeRouteServer(app);
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            await app.StopAsync();
+            await app.DisposeAsync();
+        }
+
+        private static int GetFreePort()
+        {
+            var listener = new TcpListener(IPAddress.Loopback, 0);
+            listener.Start();
+            var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+            listener.Stop();
+            return port;
+        }
+    }
+}

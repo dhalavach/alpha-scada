@@ -28,6 +28,22 @@ public sealed class AlarmMigrator(NpgsqlDataSource dataSource, ILogger<AlarmMigr
             create index if not exists ix_alarm_tenant_state on alarm_events(tenant_id, state);
             create index if not exists ix_alarm_unit_period on alarm_events(unit_id, raised_at_utc);
             create unique index if not exists ux_alarm_active_tag on alarm_events(tag_id) where state in ('active', 'acknowledged');
+            """),
+
+        new("002_alarm_outbox", """
+            create table if not exists alarm_outbox (
+                id uuid primary key,
+                event_type text not null,
+                payload jsonb not null,
+                occurred_at_utc timestamptz not null default now(),
+                dispatched_at_utc timestamptz,
+                attempts int not null default 0,
+                last_error text
+            );
+
+            create index if not exists ix_alarm_outbox_pending
+                on alarm_outbox(occurred_at_utc)
+                where dispatched_at_utc is null;
             """)
     ];
 }
