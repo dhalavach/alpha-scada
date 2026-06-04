@@ -3,6 +3,7 @@ namespace Alpha.Scada.Asset.Application;
 public sealed class CommunicationLossMonitorWorker(
     IConfiguration configuration,
     AssetService service,
+    Wolverine.IMessageBus bus,
     ILogger<CommunicationLossMonitorWorker> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -23,6 +24,11 @@ public sealed class CommunicationLossMonitorWorker(
                 var offlineUnits = await service.MarkStaleUnitsOfflineAsync(staleMinutes, stoppingToken);
                 if (offlineUnits.Count > 0)
                 {
+                    foreach (var offlineUnit in offlineUnits)
+                    {
+                        await bus.PublishAsync(offlineUnit);
+                    }
+
                     logger.LogWarning("Marked {Count} stale units offline after {Minutes} minutes without telemetry.", offlineUnits.Count, staleMinutes);
                 }
             }

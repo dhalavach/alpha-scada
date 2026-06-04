@@ -2,6 +2,7 @@ using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Configurations;
 using DotNet.Testcontainers.Containers;
 using NATS.Client.Core;
+using NATS.Client.JetStream;
 
 namespace Alpha.Scada.Tests;
 
@@ -37,8 +38,25 @@ internal static class NatsTestSupport
     public static string Url(IContainer nats) =>
         $"nats://{nats.Hostname}:{nats.GetMappedPublicPort(4222)}";
 
-    public static int MqttPort(IContainer nats) =>
-        nats.GetMappedPublicPort(1883);
+    public static async Task PublishAsync(
+        string natsUrl,
+        string subject,
+        byte[] payload,
+        string messageId,
+        CancellationToken cancellationToken = default)
+    {
+        await using var connection = new NatsConnection(new NatsOpts
+        {
+            Url = natsUrl,
+            RetryOnInitialConnect = true
+        });
+        var headers = new NatsHeaders
+        {
+            ["Nats-Msg-Id"] = messageId
+        };
+        var jetStream = new NatsJSContextFactory().CreateContext(connection);
+        await jetStream.PublishAsync(subject, payload, headers: headers, cancellationToken: cancellationToken);
+    }
 
     public static async Task<string> WaitForSubjectAsync(
         string natsUrl,
@@ -51,12 +69,26 @@ internal static class NatsTestSupport
             RetryOnInitialConnect = true
         });
 
-        using var cts = new CancellationTokenSource(timeout);
-        await foreach (var message in connection.SubscribeAsync<string>(subject, cancellationToken: cts.Token))
+        using var cts = new CancellationTokenSource();
+        var receive = Task.Run(async () =>
         {
-            return message.Subject;
-        }
+            await foreach (var message in connection.SubscribeAsync<string>(subject, cancellationToken: cts.Token)
+                               .WithCancellation(cts.Token))
+            {
+                return message.Subject;
+            }
 
-        throw new TimeoutException($"No NATS message arrived on {subject} within {timeout}.");
+            throw new TimeoutException($"No NATS message arrived on {subject}.");
+        }, CancellationToken.None);
+
+        try
+        {
+            return await receive.WaitAsync(timeout);
+        }
+        catch (TimeoutException)
+        {
+            await cts.CancelAsync();
+            throw new TimeoutException($"No NATS message arrived on {subject} within {timeout}.");
+        }
     }
 }

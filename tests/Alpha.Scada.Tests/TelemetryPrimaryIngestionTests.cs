@@ -19,11 +19,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
-using MQTTnet;
-using MQTTnet.Client;
-using MQTTnet.Protocol;
 using Npgsql;
-using Wolverine.Nats;
 using Xunit.Sdk;
 
 namespace Alpha.Scada.Tests;
@@ -36,7 +32,7 @@ public sealed class TelemetryPrimaryIngestionTests
     private static readonly Guid TagId = Guid.Parse("40000000-0000-0000-0000-000000000001");
 
     [Fact]
-    public async Task Raw_mqtt_telemetry_is_normalized_into_primary_storage_and_published_as_domain_event()
+    public async Task Native_nats_telemetry_is_normalized_into_primary_storage_and_published_as_domain_event()
     {
         var tempDir = Path.Combine(Path.GetTempPath(), $"alpha-telemetry-primary-test-{Guid.NewGuid():N}");
         Directory.CreateDirectory(tempDir);
@@ -74,6 +70,8 @@ public sealed class TelemetryPrimaryIngestionTests
                 var natsUrl = NatsTestSupport.Url(nats);
                 var storedSubject = Topics.TelemetryStoredEvent;
                 var received = NatsTestSupport.WaitForSubjectAsync(natsUrl, storedSubject, TimeSpan.FromSeconds(10));
+                var subject = Topics.Telemetry("demo-operator", "demo-energy-site", "chp-demo-001");
+                var edgeReceived = NatsTestSupport.WaitForSubjectAsync(natsUrl, subject, TimeSpan.FromSeconds(10));
 
                 using var host = BuildTelemetryHost(
                     connectionString,
@@ -83,14 +81,6 @@ public sealed class TelemetryPrimaryIngestionTests
                 await host.Services.GetRequiredService<TelemetryMigrator>().MigrateAsync(CancellationToken.None);
                 await host.StartAsync();
                 await Task.Delay(250);
-
-                var factory = new MqttFactory();
-                using var publisher = factory.CreateMqttClient();
-                await publisher.ConnectAsync(new MqttClientOptionsBuilder()
-                    .WithClientId($"telemetry-primary-publisher-{Guid.NewGuid():N}")
-                    .WithTcpServer(nats.Hostname, NatsTestSupport.MqttPort(nats))
-                    .Build());
-
                 var timestamp = DateTimeOffset.UtcNow;
                 var payload = JsonSerializer.SerializeToUtf8Bytes(
                     new TelemetryEnvelopeV1(
@@ -99,13 +89,12 @@ public sealed class TelemetryPrimaryIngestionTests
                         timestamp,
                         [new("engine.electrical_output_kw", 61.2, "good", timestamp)]),
                     new JsonSerializerOptions(JsonSerializerDefaults.Web));
+                var messageId = Guid.NewGuid().ToString("D");
+                await NatsTestSupport.PublishAsync(natsUrl, subject, payload, messageId);
+                await NatsTestSupport.PublishAsync(natsUrl, subject, payload, messageId);
 
-                await publisher.PublishAsync(new MqttApplicationMessageBuilder()
-                    .WithTopic(Topics.EdgeMqttTelemetry("demo-operator", "demo-energy-site", "chp-demo-001"))
-                    .WithPayload(payload)
-                    .WithQualityOfServiceLevel(MqttQualityOfServiceLevel.AtLeastOnce)
-                    .Build());
-
+                Assert.Equal(subject, await edgeReceived);
+                await WaitForRowsAsync(connectionString, "telemetry_samples", 1, TimeSpan.FromSeconds(10));
                 Assert.Equal(storedSubject, await received);
 
                 Assert.Equal(1, await CountRowsAsync(connectionString, "telemetry_samples"));
@@ -216,8 +205,9 @@ public sealed class TelemetryPrimaryIngestionTests
                 services.AddSingleton<TelemetryMigrator>();
                 services.AddSingleton<TelemetryRepository>();
                 services.AddSingleton<CatalogCache>();
+                services.AddSingleton<TelemetryEnvelopeV1Handler>();
                 services.AddMemoryCache();
-                services.AddHostedService<TelemetryEdgeIngestionWorker>();
+                services.AddHostedService<NativeNatsTelemetryIngestionWorker>();
                 services.AddAlphaServiceClients(
                     context.Configuration,
                     AlphaServiceClients.Tenant,
@@ -226,7 +216,8 @@ public sealed class TelemetryPrimaryIngestionTests
             })
             .UseAlphaMessaging("telemetry-primary-test", options =>
             {
-                options.PublishMessage<TelemetryBatchStored>().ToNatsSubject(Topics.TelemetryStoredEvent).UseJetStream(Topics.DomainStream);
+                options.Discovery.IncludeType<TelemetryEnvelopeV1Handler>();
+                Alpha.Scada.Telemetry.MessagingTopology.Configure(options);
             })
             .Build();
     }
@@ -273,6 +264,22 @@ public sealed class TelemetryPrimaryIngestionTests
         await connection.OpenAsync();
         await using var command = new NpgsqlCommand($"select count(*) from {tableName}", connection);
         return Convert.ToInt32(await command.ExecuteScalarAsync());
+    }
+
+    private static async Task WaitForRowsAsync(string connectionString, string tableName, int expected, TimeSpan timeout)
+    {
+        var deadline = DateTimeOffset.UtcNow.Add(timeout);
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            if (await CountRowsAsync(connectionString, tableName) >= expected)
+            {
+                return;
+            }
+
+            await Task.Delay(250);
+        }
+
+        Assert.Equal(expected, await CountRowsAsync(connectionString, tableName));
     }
 
     private sealed class FakeCatalogServer(WebApplication app) : IAsyncDisposable

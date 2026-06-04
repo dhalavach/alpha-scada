@@ -1,9 +1,9 @@
+using System.Security.Cryptography;
 using System.Text.Json;
 using Alpha.Scada.Contracts;
 using Alpha.Scada.ServiceDefaults.Messaging;
-using MQTTnet;
-using MQTTnet.Client;
-using MQTTnet.Protocol;
+using NATS.Client.Core;
+using NATS.Client.JetStream;
 
 namespace Alpha.Scada.Edge.Application;
 
@@ -21,46 +21,26 @@ public sealed class ChpUnitSimulatorWorker(
             return;
         }
 
-        var factory = new MqttFactory();
-        using var client = factory.CreateMqttClient();
-        var optionsBuilder = new MqttClientOptionsBuilder()
-            .WithClientId($"alpha-scada-simulator-{Environment.MachineName}")
-            .WithTcpServer(configuration["EdgeMqtt:Host"] ?? "localhost", configuration.GetValue("EdgeMqtt:Port", 1883));
-
-        var mqttUser = configuration["Simulator:MqttUser"] ?? configuration["EdgeMqtt:User"];
-        var mqttPassword = configuration["Simulator:MqttPassword"] ?? configuration["EdgeMqtt:Password"];
-        if (!string.IsNullOrWhiteSpace(mqttUser))
-        {
-            optionsBuilder.WithCredentials(mqttUser, mqttPassword);
-        }
-
-        var options = optionsBuilder.Build();
+        await using var connection = new NatsConnection(BuildNatsOptions());
+        var jetStream = new NatsJSContextFactory().CreateContext(connection);
         var jsonOptions = new JsonSerializerOptions(JsonSerializerDefaults.Web);
-        var topic = Topics.EdgeMqttTelemetry("demo-operator", "demo-energy-site", "chp-demo-001");
+        var subject = Topics.Telemetry("demo-operator", "demo-energy-site", "chp-demo-001");
 
         logger.LogInformation("Starting edge telemetry simulator.");
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
-                if (!client.IsConnected)
-                {
-                    await client.ConnectAsync(options, stoppingToken);
-                    logger.LogInformation("Telemetry simulator connected to edge MQTT listener at {Host}:{Port}.", configuration["EdgeMqtt:Host"] ?? "localhost", configuration.GetValue("EdgeMqtt:Port", 1883));
-                }
-
                 var now = DateTimeOffset.UtcNow;
                 var wave = Math.Sin(now.ToUnixTimeSeconds() / 30.0);
                 var envelope = new EdgeTelemetryEnvelope("1.0", "chp-demo-001", now, CreateSamples(now, wave));
                 var payload = JsonSerializer.SerializeToUtf8Bytes(envelope, jsonOptions);
+                var headers = new NatsHeaders
+                {
+                    [RawTelemetryHeaderNames.NatsMessageId] = DeterministicMessageId(subject, payload)
+                };
 
-                await client.PublishAsync(
-                    new MqttApplicationMessageBuilder()
-                        .WithTopic(topic)
-                        .WithPayload(payload)
-                        .WithQualityOfServiceLevel(MqttQualityOfServiceLevel.AtLeastOnce)
-                        .Build(),
-                    stoppingToken);
+                await jetStream.PublishAsync(subject, payload, headers: headers, cancellationToken: stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -73,6 +53,25 @@ public sealed class ChpUnitSimulatorWorker(
 
             await Task.Delay(TimeSpan.FromSeconds(1), stoppingToken);
         }
+    }
+
+    private NatsOpts BuildNatsOptions()
+    {
+        var user = configuration["Simulator:NatsUser"] ?? configuration["Nats:User"];
+        var password = configuration["Simulator:NatsPassword"] ?? configuration["Nats:Password"];
+        return new NatsOpts
+        {
+            Url = configuration["Nats:Url"] ?? "nats://localhost:4222",
+            Name = $"alpha-scada-simulator-{Environment.MachineName}",
+            RetryOnInitialConnect = true,
+            AuthOpts = string.IsNullOrWhiteSpace(user)
+                ? new NatsAuthOpts()
+                : new NatsAuthOpts
+                {
+                    Username = user,
+                    Password = password ?? string.Empty
+                }
+        };
     }
 
     private IReadOnlyCollection<EdgeTelemetrySample> CreateSamples(DateTimeOffset timestamp, double wave)
@@ -103,4 +102,20 @@ public sealed class ChpUnitSimulatorWorker(
         var value = center + (spread * 0.6 * wave) + noise;
         return new EdgeTelemetrySample(key, Math.Round(value, 2), "good", timestamp);
     }
+
+    private static string DeterministicMessageId(string subject, ReadOnlySpan<byte> payload)
+    {
+        var subjectBytes = System.Text.Encoding.UTF8.GetBytes(subject);
+        var buffer = new byte[subjectBytes.Length + 1 + payload.Length];
+        subjectBytes.CopyTo(buffer);
+        buffer[subjectBytes.Length] = 0x1f;
+        payload.CopyTo(buffer.AsSpan(subjectBytes.Length + 1));
+        var hash = SHA256.HashData(buffer);
+        return new Guid(hash.AsSpan(0, 16)).ToString("D");
+    }
+}
+
+internal static class RawTelemetryHeaderNames
+{
+    public const string NatsMessageId = "Nats-Msg-Id";
 }

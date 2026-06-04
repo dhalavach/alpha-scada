@@ -4,6 +4,7 @@ using Alpha.Scada.Alarm.Infrastructure;
 using Alpha.Scada.Contracts;
 using Alpha.Scada.ServiceDefaults;
 using Alpha.Scada.ServiceDefaults.Messaging;
+using Wolverine;
 
 const string serviceName = "alpha-scada-alarm";
 
@@ -33,11 +34,17 @@ var internalApi = app.MapGroup("/internal/v1").RequireAuthorization();
 internalApi.MapGet("/alarms/active", async (AuthenticatedUser user, AlarmService service, HttpContext context) =>
     Results.Ok(await service.GetActiveAsync(user.Current, context.RequestAborted)));
 
-internalApi.MapPost("/alarms/{alarmId:guid}/ack", async (Guid alarmId, AuthenticatedUser user, AlarmService service, HttpContext context) =>
+internalApi.MapPost("/alarms/{alarmId:guid}/ack", async (Guid alarmId, AuthenticatedUser user, AlarmService service, IMessageBus bus, HttpContext context) =>
 {
     if (!RoleRules.CanAcknowledge(user.Current.Role)) return Results.StatusCode(StatusCodes.Status403Forbidden);
-    var changed = await service.AcknowledgeAsync(alarmId, user.Current, context.RequestAborted);
-    return changed ? Results.NoContent() : Results.NotFound();
+    var acknowledged = await service.AcknowledgeAsync(alarmId, user.Current, context.RequestAborted);
+    if (acknowledged is null)
+    {
+        return Results.NotFound();
+    }
+
+    await bus.PublishAsync(acknowledged);
+    return Results.NoContent();
 });
 
 app.MapGet("/internal/v1/alarms/count", async (Guid unitId, string period, AlarmService service, CancellationToken cancellationToken) =>

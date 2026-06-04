@@ -228,10 +228,9 @@ services:
     environment:
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=alpha_edge;Username=alpha;Password=alpha
-      EdgeMqtt__Host: nats
-      EdgeMqtt__Port: "1883"
-      Simulator__MqttUser: ${NATS_USER_EDGE:?NATS_USER_EDGE must be set in .env}
-      Simulator__MqttPassword: ${NATS_PASSWORD_EDGE:?NATS_PASSWORD_EDGE must be set in .env}
+      Nats__Url: nats://nats:4222
+      Nats__User: ${NATS_USER_EDGE:?NATS_USER_EDGE must be set in .env}
+      Nats__Password: ${NATS_PASSWORD_EDGE:?NATS_PASSWORD_EDGE must be set in .env}
       Simulator__Enabled: "true"
     networks:
       - alpha-internal

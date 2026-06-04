@@ -137,7 +137,7 @@ public sealed class BackendRepositoryTests
             var text = await new StreamReader(context.Response.Body).ReadToEndAsync();
 
             Assert.Contains("alpha_scada_service_up", text);
-            Assert.Contains("alpha_scada_wolverine_outbox_depth", text);
+            Assert.Contains("alpha_scada_wolverine_error_queue_depth", text);
         });
     }
 

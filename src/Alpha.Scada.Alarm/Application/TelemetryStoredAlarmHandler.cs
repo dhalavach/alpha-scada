@@ -1,10 +1,14 @@
 using Alpha.Scada.Alarm.Infrastructure;
 using Alpha.Scada.Contracts;
 using Alpha.Scada.Telemetry.Contracts;
+using Wolverine;
 
 namespace Alpha.Scada.Alarm.Application;
 
-public sealed class TelemetryStoredAlarmHandler(ThresholdCache thresholds, AlarmService service)
+public sealed class TelemetryStoredAlarmHandler(
+    ThresholdCache thresholds,
+    AlarmService service,
+    IMessageBus bus)
 {
     public async Task Handle(TelemetryBatchStored message, CancellationToken cancellationToken)
     {
@@ -33,10 +37,19 @@ public sealed class TelemetryStoredAlarmHandler(ThresholdCache thresholds, Alarm
             return;
         }
 
-        await service.EvaluateAsync(new AlarmEvaluationRequest(
+        var events = await service.EvaluateAsync(new AlarmEvaluationRequest(
             message.TenantId,
             message.UnitId,
             message.UnitKey,
             samples), cancellationToken);
+        foreach (var raised in events.Raised)
+        {
+            await bus.PublishAsync(raised);
+        }
+
+        foreach (var cleared in events.Cleared)
+        {
+            await bus.PublishAsync(cleared);
+        }
     }
 }

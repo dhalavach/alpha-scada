@@ -1,7 +1,6 @@
 using Alpha.Scada.Alarm.Infrastructure;
 using Alpha.Scada.Alarm.Contracts;
 using Alpha.Scada.Contracts;
-using Alpha.Scada.ServiceDefaults.Messaging;
 using Npgsql;
 
 namespace Alpha.Scada.Alarm.Application;
@@ -9,21 +8,20 @@ namespace Alpha.Scada.Alarm.Application;
 public sealed class AlarmService(
     AlarmRepository repository,
     UnitKeyResolver unitKeyResolver,
-    NpgsqlDataSource dataSource,
-    WolverineTransactionalOutbox outbox)
+    NpgsqlDataSource dataSource)
 {
-    public async Task EvaluateAsync(AlarmEvaluationRequest request, CancellationToken cancellationToken)
+    public async Task<AlarmEventBatch> EvaluateAsync(AlarmEvaluationRequest request, CancellationToken cancellationToken)
     {
         var route = await ResolveRouteAsync(request.UnitId, cancellationToken);
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
         var changes = await repository.EvaluateAsync(connection, transaction, request, cancellationToken);
-        var outboxBatches = await StoreAlarmChangesAsync(connection, transaction, changes, route, cancellationToken);
+        var events = ToAlarmEvents(changes, route);
         await transaction.CommitAsync(cancellationToken);
-        await PublishAndClearAsync(outboxBatches, cancellationToken);
+        return events;
     }
 
-    public async Task RaiseCommunicationLostAsync(UnitDto unit, UnitRouteKeys? knownRoute, CancellationToken cancellationToken)
+    public async Task<AlarmRaised?> RaiseCommunicationLostAsync(UnitDto unit, UnitRouteKeys? knownRoute, CancellationToken cancellationToken)
     {
         var route = knownRoute is null
             ? await ResolveRouteAsync(unit.Id, cancellationToken)
@@ -31,31 +29,22 @@ public sealed class AlarmService(
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
         var alarm = await repository.RaiseCommunicationLostAsync(connection, transaction, unit, cancellationToken);
-        WolverineOutboxBatch? outboxBatch = null;
-        if (alarm is not null)
-        {
-            outboxBatch = await StoreRaisedAsync(connection, transaction, alarm, route, cancellationToken);
-        }
-
         await transaction.CommitAsync(cancellationToken);
-        if (outboxBatch is not null)
-        {
-            await outbox.PublishAndClearAsync(outboxBatch, cancellationToken);
-        }
+        return alarm is null ? null : ToRaised(alarm, route);
     }
 
-    public Task RaiseCommunicationLostAsync(UnitDto unit, CancellationToken cancellationToken) =>
+    public Task<AlarmRaised?> RaiseCommunicationLostAsync(UnitDto unit, CancellationToken cancellationToken) =>
         RaiseCommunicationLostAsync(unit, null, cancellationToken);
 
     public Task<IReadOnlyCollection<AlarmDto>> GetActiveAsync(CurrentUserDto user, CancellationToken cancellationToken) =>
         repository.GetActiveAsync(user, cancellationToken);
 
-    public async Task<bool> AcknowledgeAsync(Guid alarmId, CurrentUserDto user, CancellationToken cancellationToken)
+    public async Task<AlarmAcknowledged?> AcknowledgeAsync(Guid alarmId, CurrentUserDto user, CancellationToken cancellationToken)
     {
         var existing = await repository.GetActiveAlarmAsync(alarmId, user, cancellationToken);
         if (existing is null)
         {
-            return false;
+            return null;
         }
 
         var route = await ResolveRouteAsync(existing.UnitId, cancellationToken);
@@ -64,10 +53,10 @@ public sealed class AlarmService(
         var alarm = await repository.AcknowledgeAsync(connection, transaction, alarmId, user, cancellationToken);
         if (alarm is null)
         {
-            return false;
+            return null;
         }
 
-        var outboxBatch = await outbox.StoreAsync(connection, transaction, new AlarmAcknowledged(
+        var acknowledged = new AlarmAcknowledged(
             alarm.Id,
             alarm.TenantId,
             alarm.UnitId,
@@ -76,10 +65,9 @@ public sealed class AlarmService(
             route.SiteKey,
             route.UnitKey,
             user.UserId,
-            alarm.AcknowledgedAtUtc ?? DateTimeOffset.UtcNow), cancellationToken);
+            alarm.AcknowledgedAtUtc ?? DateTimeOffset.UtcNow);
         await transaction.CommitAsync(cancellationToken);
-        await outbox.PublishAndClearAsync(outboxBatch, cancellationToken);
-        return true;
+        return acknowledged;
     }
 
     public Task<int> CountForUnitPeriodAsync(Guid unitId, string period, CancellationToken cancellationToken) =>
@@ -91,22 +79,12 @@ public sealed class AlarmService(
     private static AlarmRouteKeys ToAlarmRoute(UnitRouteKeys route) =>
         new(route.TenantId, route.UnitId, route.TenantKey, route.SiteKey, route.UnitKey);
 
-    private async Task<IReadOnlyCollection<WolverineOutboxBatch>> StoreAlarmChangesAsync(
-        NpgsqlConnection connection,
-        NpgsqlTransaction transaction,
+    private static AlarmEventBatch ToAlarmEvents(
         AlarmChanges changes,
-        AlarmRouteKeys route,
-        CancellationToken cancellationToken)
-    {
-        var outboxBatches = new List<WolverineOutboxBatch>();
-        foreach (var alarm in changes.Raised)
-        {
-            outboxBatches.Add(await StoreRaisedAsync(connection, transaction, alarm, route, cancellationToken));
-        }
-
-        foreach (var alarm in changes.Cleared)
-        {
-            outboxBatches.Add(await outbox.StoreAsync(connection, transaction, new AlarmCleared(
+        AlarmRouteKeys route) =>
+        new(
+            changes.Raised.Select(alarm => ToRaised(alarm, route)).ToArray(),
+            changes.Cleared.Select(alarm => new AlarmCleared(
                 alarm.Id,
                 alarm.TenantId,
                 alarm.UnitId,
@@ -114,19 +92,12 @@ public sealed class AlarmService(
                 route.TenantKey,
                 route.SiteKey,
                 route.UnitKey,
-                alarm.ClearedAtUtc ?? DateTimeOffset.UtcNow), cancellationToken));
-        }
+                alarm.ClearedAtUtc ?? DateTimeOffset.UtcNow)).ToArray());
 
-        return outboxBatches;
-    }
-
-    private Task<WolverineOutboxBatch> StoreRaisedAsync(
-        NpgsqlConnection connection,
-        NpgsqlTransaction transaction,
+    private static AlarmRaised ToRaised(
         AlarmDto alarm,
-        AlarmRouteKeys route,
-        CancellationToken cancellationToken) =>
-        outbox.StoreAsync(connection, transaction, new AlarmRaised(
+        AlarmRouteKeys route) =>
+        new(
             alarm.Id,
             alarm.TenantId,
             alarm.UnitId,
@@ -136,15 +107,9 @@ public sealed class AlarmService(
             route.UnitKey,
             alarm.Severity,
             alarm.Message,
-            alarm.RaisedAtUtc), cancellationToken);
-
-    private async Task PublishAndClearAsync(
-        IReadOnlyCollection<WolverineOutboxBatch> outboxBatches,
-        CancellationToken cancellationToken)
-    {
-        foreach (var outboxBatch in outboxBatches)
-        {
-            await outbox.PublishAndClearAsync(outboxBatch, cancellationToken);
-        }
-    }
+            alarm.RaisedAtUtc);
 }
+
+public sealed record AlarmEventBatch(
+    IReadOnlyCollection<AlarmRaised> Raised,
+    IReadOnlyCollection<AlarmCleared> Cleared);

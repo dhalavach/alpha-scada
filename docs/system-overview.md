@@ -78,7 +78,7 @@ flowchart LR
 | Asset | `src/Alpha.Scada.Asset` | Sites, units, unit status, unit key resolution, stale unit transitions, communication-loss monitor | `Application/AssetService.cs`, `Application/CommunicationLossMonitorWorker.cs`, `Infrastructure/AssetRepository.cs` |
 | Tag Catalog | `src/Alpha.Scada.TagCatalog` | Subsystems, tag definitions, engineering units, threshold metadata | `Application/TagCatalogService.cs`, `Infrastructure/TagCatalogRepository.cs` |
 | Edge | `src/Alpha.Scada.Edge` | Optional development simulator and edge/device telemetry publishing boundary | `Application/ChpUnitSimulatorWorker.cs` |
-| Telemetry | `src/Alpha.Scada.Telemetry` | Raw edge telemetry normalization, current tag values, TimescaleDB telemetry history, report aggregates | `Application/TelemetryEdgeIngestionWorker.cs`, `Application/CatalogCache.cs`, `Infrastructure/TelemetryRepository.cs` |
+| Telemetry | `src/Alpha.Scada.Telemetry` | Raw edge telemetry normalization, current tag values, TimescaleDB telemetry history, report aggregates | `Application/NativeNatsTelemetryIngestionWorker.cs`, `Application/CatalogCache.cs`, `Infrastructure/TelemetryRepository.cs` |
 | Alarm | `src/Alpha.Scada.Alarm` | Alarm evaluation, active/acknowledged/cleared lifecycle, alarm counts | `Domain/AlarmRule.cs`, `Application/AlarmService.cs`, `Infrastructure/AlarmRepository.cs` |
 | Reporting | `src/Alpha.Scada.Reporting` | Monthly report generation and report run persistence | `Application/ReportingService.cs`, `Infrastructure/ReportingRepository.cs` |
 
@@ -383,7 +383,7 @@ Common change paths:
 | Change telemetry persistence/history behavior | `src/Alpha.Scada.Telemetry/Infrastructure/TelemetryRepository.cs` |
 | Change alarm threshold logic | `src/Alpha.Scada.Alarm/Domain/AlarmRule.cs` |
 | Change monthly report calculations | `src/Alpha.Scada.Reporting/Application/ReportingService.cs` and `src/Alpha.Scada.Telemetry/Infrastructure/TelemetryRepository.cs` |
-| Change edge ingestion behavior | `src/Alpha.Scada.Telemetry/Application/TelemetryEdgeIngestionWorker.cs` and `src/Alpha.Scada.Telemetry/Application/CatalogCache.cs` |
+| Change edge ingestion behavior | `src/Alpha.Scada.Telemetry/Application/NativeNatsTelemetryIngestionWorker.cs` and `src/Alpha.Scada.Telemetry/Application/CatalogCache.cs` |
 | Change simulator values | `src/Alpha.Scada.Edge/Application/ChpUnitSimulatorWorker.cs` |
 | Change frontend screens | `src/Alpha.Scada.Web/src/App.tsx`, `src/Alpha.Scada.Web/src/screens/*`, and `src/Alpha.Scada.Web/src/styles.css` |
 | Change Docker service topology | `docker-compose.yml` |

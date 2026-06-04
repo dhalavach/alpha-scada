@@ -61,22 +61,23 @@ Triage:
 2. Restart the affected service.
 3. Replay or discard dead letters manually after confirming the handler is idempotent.
 
-## Outbox Depth Is Climbing
+## Messaging Backlog Is Climbing
 
-Check pending outgoing messages:
+Check Wolverine dead letters first:
 
 ```bash
 docker compose exec -T postgres psql -U alpha -d alpha_telemetry -c \
-  "select destination, message_type, count(*) as pending, min(deliver_by) as oldest_due
-   from wolverine.wolverine_outgoing_envelopes
-   group by destination, message_type
-   order by pending desc;"
+  "select message_type, count(*) as failed, max(sent_at) as latest_failure
+   from wolverine.wolverine_dead_letters
+   group by message_type
+   order by failed desc;"
 ```
 
 Diagnosis:
 
 - Broker down: `docker compose ps nats` and `docker compose logs --tail 100 nats`.
 - Consumer down: `docker compose ps telemetry asset alarm gateway reporting`.
+- Edge ingress stalled: `docker compose logs --tail 100 telemetry` and inspect the `ALPHA_EDGE` stream/consumer in NATS monitoring.
 - Schema mismatch: check consumer logs for version or JSON mapping failures.
 - Slow handler: check the service database and downstream HTTP dependencies.
 

@@ -1,7 +1,6 @@
 using Alpha.Scada.Asset.Contracts;
 using Alpha.Scada.Asset.Infrastructure;
 using Alpha.Scada.Contracts;
-using Alpha.Scada.ServiceDefaults.Messaging;
 using Npgsql;
 
 namespace Alpha.Scada.Asset.Application;
@@ -9,8 +8,7 @@ namespace Alpha.Scada.Asset.Application;
 public sealed class AssetService(
     AssetRepository repository,
     TenantKeyResolver tenantKeyResolver,
-    NpgsqlDataSource dataSource,
-    WolverineTransactionalOutbox outbox)
+    NpgsqlDataSource dataSource)
 {
     public Task<IReadOnlyCollection<SiteDto>> GetSitesAsync(CurrentUserDto user, CancellationToken cancellationToken) =>
         repository.GetSitesAsync(user, cancellationToken);
@@ -27,7 +25,7 @@ public sealed class AssetService(
     public Task<UnitRouteDto?> GetUnitRouteAsync(Guid unitId, CancellationToken cancellationToken) =>
         repository.GetUnitRouteAsync(unitId, cancellationToken);
 
-    public async Task SetUnitOnlineAsync(Guid unitId, UnitStatusRoute? knownRoute, CancellationToken cancellationToken)
+    public async Task<UnitStatusChanged?> SetUnitOnlineAsync(Guid unitId, UnitStatusRoute? knownRoute, CancellationToken cancellationToken)
     {
         var route = knownRoute;
         if (route is null)
@@ -41,58 +39,38 @@ public sealed class AssetService(
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
         var unit = await repository.SetUnitOnlineAsync(connection, transaction, unitId, cancellationToken);
-        WolverineOutboxBatch? outboxBatch = null;
-        if (unit is not null)
-        {
-            outboxBatch = await StoreStatusChangedAsync(connection, transaction, unit, route, cancellationToken);
-        }
-
         await transaction.CommitAsync(cancellationToken);
-        if (outboxBatch is not null)
-        {
-            await outbox.PublishAndClearAsync(outboxBatch, cancellationToken);
-        }
+        return unit is null ? null : ToStatusChanged(unit, route);
     }
 
-    public Task SetUnitOnlineAsync(Guid unitId, CancellationToken cancellationToken) =>
+    public Task<UnitStatusChanged?> SetUnitOnlineAsync(Guid unitId, CancellationToken cancellationToken) =>
         SetUnitOnlineAsync(unitId, null, cancellationToken);
 
-    public async Task<IReadOnlyCollection<UnitDto>> MarkStaleUnitsOfflineAsync(int minutes, CancellationToken cancellationToken)
+    public async Task<IReadOnlyCollection<UnitStatusChanged>> MarkStaleUnitsOfflineAsync(int minutes, CancellationToken cancellationToken)
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
         var changed = await repository.MarkStaleUnitsOfflineAsync(connection, transaction, minutes, cancellationToken);
-        var outboxBatches = new List<WolverineOutboxBatch>();
+        var events = new List<UnitStatusChanged>();
         foreach (var changedUnit in changed)
         {
             var tenantKey = await tenantKeyResolver.ResolveAsync(changedUnit.Unit.TenantId, cancellationToken);
-            outboxBatches.Add(await StoreStatusChangedAsync(
-                connection,
-                transaction,
+            events.Add(ToStatusChanged(
                 changedUnit.Unit,
-                new UnitStatusRoute(tenantKey, changedUnit.SiteKey, changedUnit.Unit.Key),
-                cancellationToken));
+                new UnitStatusRoute(tenantKey, changedUnit.SiteKey, changedUnit.Unit.Key)));
         }
 
         await transaction.CommitAsync(cancellationToken);
-        foreach (var outboxBatch in outboxBatches)
-        {
-            await outbox.PublishAndClearAsync(outboxBatch, cancellationToken);
-        }
-
-        return changed.Select(unit => unit.Unit).ToArray();
+        return events;
     }
 
     public Task<IReadOnlyCollection<UnitDto>> GetStaleUnitsAsync(int minutes, CancellationToken cancellationToken) =>
         repository.GetStaleUnitsAsync(minutes, cancellationToken);
 
-    private Task<WolverineOutboxBatch> StoreStatusChangedAsync(
-        NpgsqlConnection connection,
-        NpgsqlTransaction transaction,
+    private static UnitStatusChanged ToStatusChanged(
         UnitDto unit,
-        UnitStatusRoute route,
-        CancellationToken cancellationToken) =>
-        outbox.StoreAsync(connection, transaction, new UnitStatusChanged(
+        UnitStatusRoute route) =>
+        new(
             unit.TenantId,
             unit.SiteId,
             unit.Id,
@@ -102,5 +80,5 @@ public sealed class AssetService(
             unit.Name,
             unit.Status,
             DateTimeOffset.UtcNow,
-            unit.LastSeenUtc), cancellationToken);
+            unit.LastSeenUtc);
 }

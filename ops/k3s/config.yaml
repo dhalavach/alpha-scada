@@ -7,8 +7,6 @@ data:
   ASPNETCORE_URLS: http://+:8080
   Region: EU
   Nats__Url: nats://nats:4222
-  EdgeMqtt__Host: nats
-  EdgeMqtt__Port: "1883"
   Simulator__Enabled: "false"
 ---
 apiVersion: v1
@@ -23,5 +21,3 @@ stringData:
   Nats__Password: services-pass
   NATS_USER_EDGE: edge
   NATS_PASSWORD_EDGE: edge-pass
-  Simulator__MqttUser: edge
-  Simulator__MqttPassword: edge-pass
