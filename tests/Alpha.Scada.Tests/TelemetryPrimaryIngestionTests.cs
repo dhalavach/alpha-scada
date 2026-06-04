@@ -18,6 +18,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging.Abstractions;
 using MQTTnet;
 using MQTTnet.Client;
 using MQTTnet.Protocol;
@@ -141,6 +142,61 @@ public sealed class TelemetryPrimaryIngestionTests
         }
     }
 
+    [Fact]
+    public async Task Telemetry_repository_transaction_overload_rolls_back_and_commits_samples_with_current_state()
+    {
+        var postgres = new ContainerBuilder()
+            .WithImage(TestImages.Postgres)
+            .WithEnvironment("POSTGRES_DB", "alpha_test")
+            .WithEnvironment("POSTGRES_USER", "alpha")
+            .WithEnvironment("POSTGRES_PASSWORD", "alpha-pass")
+            .WithPortBinding(5432, true)
+            .WithWaitStrategy(Wait.ForUnixContainer().UntilInternalTcpPortIsAvailable(5432))
+            .Build();
+
+        try
+        {
+            await postgres.StartAsync();
+        }
+        catch (DockerUnavailableException ex)
+        {
+            await postgres.DisposeAsync();
+            throw SkipException.ForSkip($"Docker is not available for telemetry transaction integration test: {ex.Message}");
+        }
+
+        await using (postgres)
+        {
+            var connectionString =
+                $"Host={postgres.Hostname};Port={postgres.GetMappedPublicPort(5432)};Database=alpha_test;Username=alpha;Password=alpha-pass";
+            await WaitForPostgresAsync(connectionString);
+
+            await using var dataSource = NpgsqlDataSource.Create(connectionString);
+            await new TelemetryMigrator(dataSource, NullLogger<TelemetryMigrator>.Instance).MigrateAsync(CancellationToken.None);
+            var repository = new TelemetryRepository(dataSource);
+            var request = IngestRequest(DateTimeOffset.UtcNow);
+
+            await using (var connection = await dataSource.OpenConnectionAsync())
+            await using (var transaction = await connection.BeginTransactionAsync())
+            {
+                await repository.IngestAsync(connection, transaction, request, CancellationToken.None);
+                await transaction.RollbackAsync();
+            }
+
+            Assert.Equal(0, await CountRowsAsync(connectionString, "telemetry_samples"));
+            Assert.Equal(0, await CountRowsAsync(connectionString, "tag_current"));
+
+            await using (var connection = await dataSource.OpenConnectionAsync())
+            await using (var transaction = await connection.BeginTransactionAsync())
+            {
+                await repository.IngestAsync(connection, transaction, request, CancellationToken.None);
+                await transaction.CommitAsync();
+            }
+
+            Assert.Equal(1, await CountRowsAsync(connectionString, "telemetry_samples"));
+            Assert.Equal(1, await CountRowsAsync(connectionString, "tag_current"));
+        }
+    }
+
     private static IHost BuildTelemetryHost(string connectionString, string natsUrl, string catalogBaseAddress)
     {
         var settings = new Dictionary<string, string?>
@@ -174,6 +230,24 @@ public sealed class TelemetryPrimaryIngestionTests
             })
             .Build();
     }
+
+    private static TelemetryIngestRequest IngestRequest(DateTimeOffset timestamp) =>
+        new(
+            TenantId,
+            UnitId,
+            [
+                new(
+                    TagId,
+                    "engine.electrical_output_kw",
+                    "Electrical Output",
+                    "Engine",
+                    "kW",
+                    45,
+                    70,
+                    61.2,
+                    "good",
+                    timestamp)
+            ]);
 
     private static async Task WaitForPostgresAsync(string connectionString)
     {

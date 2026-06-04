@@ -5,6 +5,7 @@ using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
 using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
+using Xunit.Sdk;
 
 namespace Alpha.Scada.Tests;
 
@@ -119,8 +120,7 @@ public sealed class AssetRepositoryBehaviorTests
         }
         catch (DockerUnavailableException ex)
         {
-            Console.WriteLine($"Docker is not available for asset repository integration test: {ex.Message}");
-            return;
+            throw SkipException.ForSkip($"Docker is not available for asset repository integration test: {ex.Message}");
         }
 
         await using (postgres)

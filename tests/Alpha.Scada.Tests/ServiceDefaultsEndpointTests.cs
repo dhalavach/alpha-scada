@@ -1,5 +1,6 @@
 using Alpha.Scada.Contracts;
 using Alpha.Scada.ServiceDefaults;
+using Alpha.Scada.ServiceDefaults.Messaging;
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
 using Microsoft.AspNetCore.Builder;
@@ -10,6 +11,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
+using Wolverine;
 using Xunit.Sdk;
 
 namespace Alpha.Scada.Tests;
@@ -119,6 +121,114 @@ public sealed class ServiceDefaultsEndpointTests
         Assert.Contains("Services:Asset", error.Message);
     }
 
+    [Fact]
+    public async Task Transactional_outbox_rolls_back_staged_envelopes_and_keeps_committed_fallback()
+    {
+        await WithPostgresAsync(async connectionString =>
+        {
+            await using var dataSource = NpgsqlDataSource.Create(connectionString);
+            await using var connection = await dataSource.OpenConnectionAsync();
+            await CreateOutboxTableAsync(connection);
+
+            var outbox = new WolverineTransactionalOutbox(
+                new RecordingMessageBus(),
+                new ConfigurationBuilder().Build());
+
+            await using (var transaction = await connection.BeginTransactionAsync())
+            {
+                await outbox.StoreAsync(connection, transaction, new TestEvent(), CancellationToken.None);
+                await transaction.RollbackAsync();
+            }
+
+            Assert.Equal(0, await CountAsync(dataSource, "select count(*) from wolverine.wolverine_outgoing_envelopes"));
+
+            await using (var transaction = await connection.BeginTransactionAsync())
+            {
+                await outbox.StoreAsync(connection, transaction, new TestEvent(), CancellationToken.None);
+                await transaction.CommitAsync();
+            }
+
+            Assert.Equal(1, await CountAsync(dataSource, "select count(*) from wolverine.wolverine_outgoing_envelopes"));
+        });
+    }
+
+    [Fact]
+    public async Task Transactional_outbox_clears_fallback_after_successful_publish()
+    {
+        await WithPostgresAsync(async connectionString =>
+        {
+            await using var dataSource = NpgsqlDataSource.Create(connectionString);
+            await using var connection = await dataSource.OpenConnectionAsync();
+            await CreateOutboxTableAsync(connection);
+            var bus = new RecordingMessageBus();
+            var outbox = new WolverineTransactionalOutbox(
+                bus,
+                new ConfigurationBuilder().Build(),
+                dataSource);
+
+            WolverineOutboxBatch batch;
+            await using (var transaction = await connection.BeginTransactionAsync())
+            {
+                batch = await outbox.StoreAsync(connection, transaction, new TestEvent(), CancellationToken.None);
+                await transaction.CommitAsync();
+            }
+
+            Assert.Equal(1, await CountAsync(dataSource, "select count(*) from wolverine.wolverine_outgoing_envelopes"));
+
+            await outbox.PublishAndClearAsync(batch, CancellationToken.None);
+
+            Assert.Equal(1, bus.PublishCount);
+            Assert.Equal(typeof(TestEvent), bus.LastPublishedMessage?.GetType());
+            Assert.Equal(0, await CountAsync(dataSource, "select count(*) from wolverine.wolverine_outgoing_envelopes"));
+        });
+    }
+
+    [Fact]
+    public async Task Transactional_outbox_keeps_fallback_when_post_commit_publish_fails()
+    {
+        await WithPostgresAsync(async connectionString =>
+        {
+            await using var dataSource = NpgsqlDataSource.Create(connectionString);
+            await using var connection = await dataSource.OpenConnectionAsync();
+            await CreateOutboxTableAsync(connection);
+            var bus = new RecordingMessageBus { ThrowOnPublish = true };
+            var outbox = new WolverineTransactionalOutbox(
+                bus,
+                new ConfigurationBuilder().Build(),
+                dataSource);
+
+            WolverineOutboxBatch batch;
+            await using (var transaction = await connection.BeginTransactionAsync())
+            {
+                batch = await outbox.StoreAsync(connection, transaction, new TestEvent(), CancellationToken.None);
+                await transaction.CommitAsync();
+            }
+
+            var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                outbox.PublishAndClearAsync(batch, CancellationToken.None));
+
+            Assert.Contains("Simulated publish failure", error.Message);
+            Assert.Equal(1, bus.PublishCount);
+            Assert.Equal(1, await CountAsync(dataSource, "select count(*) from wolverine.wolverine_outgoing_envelopes"));
+        });
+    }
+
+    [Fact]
+    public void Transactional_outbox_rejects_invalid_wolverine_schema_config()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Wolverine:StorageSchema"] = "wolverine;drop schema public"
+            })
+            .Build();
+
+        var error = Assert.Throws<InvalidOperationException>(() =>
+            new WolverineTransactionalOutbox(new RecordingMessageBus(), configuration));
+
+        Assert.Contains("Invalid Wolverine storage schema", error.Message);
+    }
+
     private static async Task<(WebApplication App, string Token)> BuildAuthAppAsync(string role)
     {
         var configuration = ConfigurationWithSecret();
@@ -166,6 +276,24 @@ public sealed class ServiceDefaultsEndpointTests
         await using var connection = await dataSource.OpenConnectionAsync();
         await using var command = new NpgsqlCommand(sql, connection);
         return Convert.ToInt64(await command.ExecuteScalarAsync());
+    }
+
+    private static async Task CreateOutboxTableAsync(NpgsqlConnection connection)
+    {
+        await using var command = new NpgsqlCommand("""
+            create schema if not exists wolverine;
+
+            create table if not exists wolverine.wolverine_outgoing_envelopes (
+                id uuid primary key,
+                owner_id integer not null,
+                destination varchar not null,
+                deliver_by timestamp with time zone null,
+                body bytea not null,
+                attempts integer null default 0,
+                message_type varchar not null
+            );
+            """, connection);
+        await command.ExecuteNonQueryAsync();
     }
 
     private static async Task WithPostgresAsync(Func<string, Task> run)
@@ -251,5 +379,95 @@ public sealed class ServiceDefaultsEndpointTests
                 """, connection);
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
+    }
+
+    private sealed record TestEvent;
+
+    private sealed class RecordingMessageBus : Wolverine.IMessageBus
+    {
+        public string? TenantId { get; set; } = string.Empty;
+        public bool ThrowOnPublish { get; init; }
+        public int PublishCount { get; private set; }
+        public object? LastPublishedMessage { get; private set; }
+
+        public IDestinationEndpoint EndpointFor(string endpointName) =>
+            throw new NotSupportedException();
+
+        public IDestinationEndpoint EndpointFor(Uri uri) =>
+            throw new NotSupportedException();
+
+        public IReadOnlyList<Envelope> PreviewSubscriptions(object message) =>
+            PreviewSubscriptions(message, new DeliveryOptions());
+
+        public IReadOnlyList<Envelope> PreviewSubscriptions(object message, DeliveryOptions options) =>
+        [
+            new(message)
+            {
+                Id = Guid.NewGuid(),
+                OwnerId = 0,
+                Destination = new Uri("nats://alpha.test/events"),
+                MessageType = "test.event",
+                Data = [1, 2, 3],
+                ContentType = "application/json"
+            }
+        ];
+
+        public ValueTask PublishAsync<T>(T message, DeliveryOptions? options = null)
+        {
+            PublishCount++;
+            LastPublishedMessage = message;
+            if (ThrowOnPublish)
+            {
+                throw new InvalidOperationException("Simulated publish failure.");
+            }
+
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask SendAsync<T>(T message, DeliveryOptions? options = null) =>
+            throw new NotSupportedException();
+
+        public ValueTask BroadcastToTopicAsync(string topicName, object message, DeliveryOptions? options = null) =>
+            throw new NotSupportedException();
+
+        public Task InvokeForTenantAsync(
+            string tenantId,
+            object message,
+            CancellationToken cancellation = default,
+            TimeSpan? timeout = null) =>
+            throw new NotSupportedException();
+
+        public Task<T> InvokeForTenantAsync<T>(
+            string tenantId,
+            object message,
+            CancellationToken cancellation = default,
+            TimeSpan? timeout = null) =>
+            throw new NotSupportedException();
+
+        public Task InvokeAsync(
+            object message,
+            CancellationToken cancellation = default,
+            TimeSpan? timeout = null) =>
+            throw new NotSupportedException();
+
+        public Task InvokeAsync(
+            object message,
+            DeliveryOptions options,
+            CancellationToken cancellation = default,
+            TimeSpan? timeout = null) =>
+            throw new NotSupportedException();
+
+        public Task<T> InvokeAsync<T>(
+            object message,
+            CancellationToken cancellation = default,
+            TimeSpan? timeout = null) =>
+            throw new NotSupportedException();
+
+        public Task<T> InvokeAsync<T>(
+            object message,
+            DeliveryOptions options,
+            CancellationToken cancellation = default,
+            TimeSpan? timeout = null) =>
+            throw new NotSupportedException();
     }
 }
