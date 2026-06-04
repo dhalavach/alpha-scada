@@ -207,7 +207,6 @@ public sealed class TelemetryPrimaryIngestionTests
                 services.AddSingleton<CatalogCache>();
                 services.AddSingleton<TelemetryEnvelopeV1Handler>();
                 services.AddMemoryCache();
-                services.AddHostedService<NativeNatsTelemetryIngestionWorker>();
                 services.AddAlphaServiceClients(
                     context.Configuration,
                     AlphaServiceClients.Tenant,
@@ -216,7 +215,7 @@ public sealed class TelemetryPrimaryIngestionTests
             })
             .UseAlphaMessaging("telemetry-primary-test", options =>
             {
-                options.Discovery.IncludeType<TelemetryEnvelopeV1Handler>();
+                options.Discovery.IncludeAssembly(typeof(TelemetryEnvelopeV1Handler).Assembly);
                 Alpha.Scada.Telemetry.MessagingTopology.Configure(options);
             })
             .Build();

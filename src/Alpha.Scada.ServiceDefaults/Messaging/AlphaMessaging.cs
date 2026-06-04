@@ -64,6 +64,7 @@ public static class AlphaMessaging
         options.Policies.AutoApplyTransactions();
         options.Policies.UseDurableInboxOnAllListeners();
         options.Policies.UseDurableOutboxOnAllSendingEndpoints();
+        options.Policies.AllSenders(sender => sender.CustomizeOutgoing(AddNatsDeduplicationHeader));
         options.OnAnyException()
             .RetryWithCooldown(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(30))
             .Then.MoveToErrorQueue();
@@ -71,16 +72,25 @@ public static class AlphaMessaging
         configure?.Invoke(options);
     }
 
+    private static void AddNatsDeduplicationHeader(Envelope envelope)
+    {
+        if (string.IsNullOrWhiteSpace(envelope.DeduplicationId)
+            || envelope.Headers.ContainsKey(RawTelemetryHeaders.NatsMessageId))
+        {
+            return;
+        }
+
+        envelope.Headers[RawTelemetryHeaders.NatsMessageId] = envelope.DeduplicationId;
+    }
+
     private static void ConfigureNats(WolverineOptions options, IConfiguration configuration)
     {
-        var url = configuration["Nats:Url"] ?? "nats://localhost:4222";
-        var user = configuration["Nats:User"];
-        var password = configuration["Nats:Password"];
+        var natsOptions = NatsOptions.FromConfiguration(configuration);
 
-        var nats = options.UseNats(url);
-        if (!string.IsNullOrWhiteSpace(user))
+        var nats = options.UseNats(natsOptions.Url);
+        if (!string.IsNullOrWhiteSpace(natsOptions.User))
         {
-            nats.WithCredentials(user, password ?? string.Empty);
+            nats.WithCredentials(natsOptions.User, natsOptions.Password ?? string.Empty);
         }
 
         nats.UseJetStream(streams =>

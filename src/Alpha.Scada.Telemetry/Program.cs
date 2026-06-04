@@ -15,7 +15,6 @@ builder.Services.AddSingleton<TelemetryService>();
 builder.Services.AddSingleton<CatalogCache>();
 builder.Services.AddSingleton<TelemetryEnvelopeV1Handler>();
 builder.Services.AddMemoryCache();
-builder.Services.AddHostedService<NativeNatsTelemetryIngestionWorker>();
 builder.Services.AddAlphaServiceClients(
     builder.Configuration,
     AlphaServiceClients.Tenant,

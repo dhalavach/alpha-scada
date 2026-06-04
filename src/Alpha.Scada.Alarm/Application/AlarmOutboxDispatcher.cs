@@ -1,6 +1,7 @@
 using System.Threading.Channels;
 using Alpha.Scada.Alarm.Contracts;
 using Alpha.Scada.Alarm.Infrastructure;
+using Alpha.Scada.ServiceDefaults.Messaging;
 using Npgsql;
 using Wolverine;
 
@@ -119,10 +120,11 @@ public sealed class AlarmOutboxDispatcher(
 
     private ValueTask PublishAsync(object message, Guid outboxId, CancellationToken cancellationToken)
     {
+        var deduplicationId = outboxId.ToString("D");
         var options = new DeliveryOptions
         {
-            DeduplicationId = outboxId.ToString("D")
-        };
+            DeduplicationId = deduplicationId
+        }.WithHeader(RawTelemetryHeaders.NatsMessageId, deduplicationId);
 
         return message switch
         {

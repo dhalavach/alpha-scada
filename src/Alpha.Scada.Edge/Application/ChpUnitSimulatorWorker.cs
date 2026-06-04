@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text.Json;
 using Alpha.Scada.Contracts;
+using Alpha.Scada.Contracts.Messaging;
 using Alpha.Scada.ServiceDefaults.Messaging;
 using NATS.Client.Core;
 using NATS.Client.JetStream;
@@ -35,9 +36,14 @@ public sealed class ChpUnitSimulatorWorker(
                 var wave = Math.Sin(now.ToUnixTimeSeconds() / 30.0);
                 var envelope = new EdgeTelemetryEnvelope("1.0", "chp-demo-001", now, CreateSamples(now, wave));
                 var payload = JsonSerializer.SerializeToUtf8Bytes(envelope, jsonOptions);
+                var messageId = DeterministicMessageId(subject, payload);
                 var headers = new NatsHeaders
                 {
-                    [RawTelemetryHeaderNames.NatsMessageId] = DeterministicMessageId(subject, payload)
+                    [RawTelemetryHeaders.NatsMessageId] = messageId,
+                    [RawTelemetryHeaders.WolverineMessageId] = messageId,
+                    [RawTelemetryHeaders.WolverineMessageType] = typeof(TelemetryEnvelopeV1).FullName!,
+                    [RawTelemetryHeaders.WolverineContentType] = "application/json",
+                    [RawTelemetryHeaders.Subject] = subject
                 };
 
                 await jetStream.PublishAsync(subject, payload, headers: headers, cancellationToken: stoppingToken);
@@ -57,11 +63,12 @@ public sealed class ChpUnitSimulatorWorker(
 
     private NatsOpts BuildNatsOptions()
     {
+        var options = NatsOptions.FromConfiguration(configuration);
         var user = configuration["Simulator:NatsUser"] ?? configuration["Nats:User"];
         var password = configuration["Simulator:NatsPassword"] ?? configuration["Nats:Password"];
         return new NatsOpts
         {
-            Url = configuration["Nats:Url"] ?? "nats://localhost:4222",
+            Url = options.Url,
             Name = $"alpha-scada-simulator-{Environment.MachineName}",
             RetryOnInitialConnect = true,
             AuthOpts = string.IsNullOrWhiteSpace(user)
@@ -113,9 +120,4 @@ public sealed class ChpUnitSimulatorWorker(
         var hash = SHA256.HashData(buffer);
         return new Guid(hash.AsSpan(0, 16)).ToString("D");
     }
-}
-
-internal static class RawTelemetryHeaderNames
-{
-    public const string NatsMessageId = "Nats-Msg-Id";
 }

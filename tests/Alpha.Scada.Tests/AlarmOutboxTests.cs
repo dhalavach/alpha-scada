@@ -17,6 +17,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using NATS.Client.Core;
+using NATS.Client.JetStream;
 using Npgsql;
 using NpgsqlTypes;
 using Wolverine;
@@ -140,15 +141,12 @@ public sealed class AlarmOutboxTests
 
                     Assert.Equal(1, firstCount);
                     Assert.Equal(1, await CountDispatchedAsync(connectionString));
+                    Assert.Equal(1, await CountStreamMessagesAsync(NatsTestSupport.Url(nats), Topics.DomainStream));
 
                     await ResetOutboxRowAsync(connectionString, outboxId);
-                    var duplicateCount = await CountSubjectMessagesAsync(
-                        NatsTestSupport.Url(nats),
-                        Topics.AlarmRaisedEvent,
-                        TimeSpan.FromSeconds(2),
-                        async () => await dispatcher.DispatchPendingAsync(CancellationToken.None));
+                    await dispatcher.DispatchPendingAsync(CancellationToken.None);
 
-                    Assert.Equal(0, duplicateCount);
+                    Assert.Equal(1, await CountStreamMessagesAsync(NatsTestSupport.Url(nats), Topics.DomainStream));
                     await host.StopAsync();
                 }
             }
@@ -321,6 +319,19 @@ public sealed class AlarmOutboxTests
         }
 
         return count;
+    }
+
+    private static async Task<long> CountStreamMessagesAsync(string natsUrl, string streamName)
+    {
+        await using var connection = new NatsConnection(new NatsOpts
+        {
+            Url = natsUrl,
+            RetryOnInitialConnect = true
+        });
+        var jetStream = new NatsJSContextFactory().CreateContext(connection);
+        var stream = await jetStream.GetStreamAsync(streamName);
+        await stream.RefreshAsync();
+        return stream.Info.State.Messages;
     }
 
     private static async Task<int> CountRowsAsync(string connectionString, string tableName)
