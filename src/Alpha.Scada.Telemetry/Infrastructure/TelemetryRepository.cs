@@ -18,6 +18,18 @@ public sealed class TelemetryRepository
         TelemetryIngestRequest request,
         CancellationToken cancellationToken)
     {
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var tx = await connection.BeginTransactionAsync(cancellationToken);
+        await IngestAsync(connection, tx, request, cancellationToken);
+        await tx.CommitAsync(cancellationToken);
+    }
+
+    public async Task IngestAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        TelemetryIngestRequest request,
+        CancellationToken cancellationToken)
+    {
         var count = request.Samples.Count;
         if (count == 0)
         {
@@ -41,8 +53,6 @@ public sealed class TelemetryRepository
             index++;
         }
 
-        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        await using var tx = await connection.BeginTransactionAsync(cancellationToken);
         await using var command = new NpgsqlCommand("""
             insert into telemetry_samples (tenant_id, unit_id, tag_id, tag_key, timestamp_utc, value_double, quality, source_timestamp_utc, received_at_utc)
             select @tenant_id, @unit_id, s.tag_id, s.tag_key, s.timestamp_utc, s.value_double, s.quality, s.timestamp_utc, now()
@@ -60,7 +70,7 @@ public sealed class TelemetryRepository
                 quality = excluded.quality,
                 timestamp_utc = excluded.timestamp_utc
             where tag_current.timestamp_utc <= excluded.timestamp_utc;
-            """, connection, tx);
+            """, connection, transaction);
         command.Parameters.AddWithValue("tenant_id", request.TenantId);
         command.Parameters.AddWithValue("unit_id", request.UnitId);
         command.Parameters.Add(new NpgsqlParameter("tag_ids", NpgsqlDbType.Array | NpgsqlDbType.Uuid) { Value = tagIds });
@@ -69,8 +79,6 @@ public sealed class TelemetryRepository
         command.Parameters.Add(new NpgsqlParameter("values", NpgsqlDbType.Array | NpgsqlDbType.Double) { Value = values });
         command.Parameters.Add(new NpgsqlParameter("qualities", NpgsqlDbType.Array | NpgsqlDbType.Text) { Value = qualities });
         await command.ExecuteNonQueryAsync(cancellationToken);
-
-        await tx.CommitAsync(cancellationToken);
     }
 
     public async Task<IReadOnlyCollection<TagValueDto>> GetCurrentAsync(Guid unitId, CurrentUserDto user, CancellationToken cancellationToken)

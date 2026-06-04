@@ -18,6 +18,19 @@ public sealed class AlarmRepository
 
     public async Task<AlarmChanges> EvaluateAsync(AlarmEvaluationRequest request, CancellationToken cancellationToken)
     {
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        var changes = await EvaluateAsync(connection, transaction, request, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return changes;
+    }
+
+    public async Task<AlarmChanges> EvaluateAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        AlarmEvaluationRequest request,
+        CancellationToken cancellationToken)
+    {
         var alarmingTagIds = new List<Guid>();
         var severities = new List<string>();
         var messages = new List<string>();
@@ -45,9 +58,6 @@ public sealed class AlarmRepository
             return new AlarmChanges(raised, cleared);
         }
 
-        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        await using var tx = await connection.BeginTransactionAsync(cancellationToken);
-
         if (alarmingTagIds.Count > 0)
         {
             // One active alarm per tag: the partial unique index on (tag_id) where state in
@@ -59,7 +69,7 @@ public sealed class AlarmRepository
                 from unnest(@tag_ids, @severities, @messages) as a(tag_id, severity, message)
                 on conflict (tag_id) where state in ('active', 'acknowledged') do nothing
                 returning id, tenant_id, unit_id, tag_id, severity, message, state, raised_at_utc, acknowledged_at_utc, cleared_at_utc
-                """, connection, tx);
+                """, connection, transaction);
             command.Parameters.AddWithValue("tenant_id", request.TenantId);
             command.Parameters.AddWithValue("unit_id", request.UnitId);
             command.Parameters.Add(new NpgsqlParameter("tag_ids", NpgsqlDbType.Array | NpgsqlDbType.Uuid) { Value = alarmingTagIds.ToArray() });
@@ -76,20 +86,30 @@ public sealed class AlarmRepository
                 set state = 'cleared', cleared_at_utc = now()
                 where tag_id = any(@tag_ids) and state in ('active', 'acknowledged')
                 returning id, tenant_id, unit_id, tag_id, severity, message, state, raised_at_utc, acknowledged_at_utc, cleared_at_utc
-                """, connection, tx);
+                """, connection, transaction);
             command.Parameters.Add(new NpgsqlParameter("tag_ids", NpgsqlDbType.Array | NpgsqlDbType.Uuid) { Value = clearingTagIds.ToArray() });
             cleared.AddRange(await ReadAlarmsAsync(command, cancellationToken));
 
         }
 
-        await tx.CommitAsync(cancellationToken);
         return new AlarmChanges(raised, cleared);
     }
 
     public async Task<AlarmDto?> RaiseCommunicationLostAsync(UnitDto unit, CancellationToken cancellationToken)
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        await using var tx = await connection.BeginTransactionAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        var alarm = await RaiseCommunicationLostAsync(connection, transaction, unit, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return alarm;
+    }
+
+    public async Task<AlarmDto?> RaiseCommunicationLostAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        UnitDto unit,
+        CancellationToken cancellationToken)
+    {
         await using var command = new NpgsqlCommand("""
             insert into alarm_events (id, tenant_id, unit_id, tag_id, severity, message, state, raised_at_utc)
             select gen_random_uuid(), @tenant_id, @unit_id, null, 'critical', @message, 'active', now()
@@ -98,14 +118,11 @@ public sealed class AlarmRepository
                 where unit_id = @unit_id and tag_id is null and state in ('active', 'acknowledged')
             )
             returning id, tenant_id, unit_id, tag_id, severity, message, state, raised_at_utc, acknowledged_at_utc, cleared_at_utc
-            """, connection, tx);
+            """, connection, transaction);
         command.Parameters.AddWithValue("tenant_id", unit.TenantId);
         command.Parameters.AddWithValue("unit_id", unit.Id);
         command.Parameters.AddWithValue("message", $"{unit.Name} communication lost");
-        var alarm = await ReadAlarmAsync(command, cancellationToken);
-
-        await tx.CommitAsync(cancellationToken);
-        return alarm;
+        return await ReadAlarmAsync(command, cancellationToken);
     }
 
     public async Task<IReadOnlyCollection<AlarmDto>> GetActiveAsync(CurrentUserDto user, CancellationToken cancellationToken)
@@ -139,21 +156,30 @@ public sealed class AlarmRepository
     public async Task<AlarmDto?> AcknowledgeAsync(Guid alarmId, CurrentUserDto user, CancellationToken cancellationToken)
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        await using var tx = await connection.BeginTransactionAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        var alarm = await AcknowledgeAsync(connection, transaction, alarmId, user, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return alarm;
+    }
+
+    public async Task<AlarmDto?> AcknowledgeAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        Guid alarmId,
+        CurrentUserDto user,
+        CancellationToken cancellationToken)
+    {
         await using var command = new NpgsqlCommand("""
             update alarm_events
             set state = 'acknowledged', acknowledged_at_utc = now(), acknowledged_by_user_id = @user_id
             where id = @alarm_id and state = 'active' and (@is_support or tenant_id = @tenant_id)
             returning id, tenant_id, unit_id, tag_id, severity, message, state, raised_at_utc, acknowledged_at_utc, cleared_at_utc
-            """, connection, tx);
+            """, connection, transaction);
         command.Parameters.AddWithValue("alarm_id", alarmId);
         command.Parameters.AddWithValue("user_id", user.UserId);
         command.Parameters.AddWithValue("tenant_id", user.TenantId);
         command.Parameters.AddWithValue("is_support", RoleRules.IsSupport(user.Role));
-        var alarm = await ReadAlarmAsync(command, cancellationToken);
-
-        await tx.CommitAsync(cancellationToken);
-        return alarm;
+        return await ReadAlarmAsync(command, cancellationToken);
     }
 
     public async Task<int> CountForUnitPeriodAsync(Guid unitId, string period, CancellationToken cancellationToken)

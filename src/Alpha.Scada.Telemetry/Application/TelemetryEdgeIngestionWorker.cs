@@ -7,7 +7,7 @@ using Alpha.Scada.Telemetry.Infrastructure;
 using NATS.Client.Core;
 using NATS.Client.JetStream;
 using NATS.Client.JetStream.Models;
-using Wolverine;
+using Npgsql;
 
 namespace Alpha.Scada.Telemetry.Application;
 
@@ -15,7 +15,8 @@ public sealed class TelemetryEdgeIngestionWorker(
     IConfiguration configuration,
     CatalogCache catalog,
     TelemetryRepository repository,
-    IMessageBus bus,
+    NpgsqlDataSource dataSource,
+    WolverineTransactionalOutbox outbox,
     ILogger<TelemetryEdgeIngestionWorker> logger) : BackgroundService
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -144,8 +145,12 @@ public sealed class TelemetryEdgeIngestionWorker(
                 sample.Quality,
                 sample.SourceTimestampUtc)).ToArray());
 
-        await repository.IngestAsync(new(batch.TenantId, batch.UnitId, batch.Samples), cancellationToken);
-        await bus.PublishAsync(stored);
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        await repository.IngestAsync(connection, transaction, new(batch.TenantId, batch.UnitId, batch.Samples), cancellationToken);
+        var outboxBatch = await outbox.StoreAsync(connection, transaction, stored, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        await outbox.PublishAndClearAsync(outboxBatch, cancellationToken);
     }
 
     private void EnsureSupportedSchema(string schemaVersion)

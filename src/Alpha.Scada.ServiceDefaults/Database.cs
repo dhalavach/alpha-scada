@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
+using Alpha.Scada.ServiceDefaults.Messaging;
 
 namespace Alpha.Scada.ServiceDefaults;
 
@@ -11,6 +12,7 @@ public static class Database
         var connectionString = configuration.GetConnectionString("Postgres")
             ?? throw new InvalidOperationException("ConnectionStrings:Postgres is required.");
         services.AddSingleton(_ => NpgsqlDataSource.Create(connectionString));
+        services.AddSingleton<WolverineTransactionalOutbox>();
         return services;
     }
 

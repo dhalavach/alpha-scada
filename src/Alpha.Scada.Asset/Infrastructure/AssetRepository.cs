@@ -101,12 +101,24 @@ public sealed class AssetRepository
     public async Task<UnitDto?> SetUnitOnlineAsync(Guid unitId, CancellationToken cancellationToken)
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        var unit = await SetUnitOnlineAsync(connection, transaction, unitId, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return unit;
+    }
+
+    public async Task<UnitDto?> SetUnitOnlineAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        Guid unitId,
+        CancellationToken cancellationToken)
+    {
         await using var command = new NpgsqlCommand("""
             update units
             set status = 'online', last_seen_utc = now()
             where id = @unit_id
             returning id, tenant_id, site_id, key, name, model, status, last_seen_utc
-            """, connection);
+            """, connection, transaction);
         command.Parameters.AddWithValue("unit_id", unitId);
         return (await ReadUnitsAsync(command, cancellationToken)).FirstOrDefault();
     }
@@ -116,6 +128,18 @@ public sealed class AssetRepository
         CancellationToken cancellationToken)
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        var changed = await MarkStaleUnitsOfflineAsync(connection, transaction, minutes, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return changed;
+    }
+
+    public async Task<IReadOnlyCollection<UnitStatusChange>> MarkStaleUnitsOfflineAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        int minutes,
+        CancellationToken cancellationToken)
+    {
         await using var command = new NpgsqlCommand("""
             with changed as (
                 update units u
@@ -128,7 +152,7 @@ public sealed class AssetRepository
             )
             select id, tenant_id, site_id, key, name, model, status, last_seen_utc, site_key
             from changed
-            """, connection);
+            """, connection, transaction);
         command.Parameters.AddWithValue("minutes", minutes);
         var changed = new List<UnitStatusChange>();
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
