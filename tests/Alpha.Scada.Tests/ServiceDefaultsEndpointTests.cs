@@ -192,11 +192,33 @@ public sealed class ServiceDefaultsEndpointTests
         try
         {
             var port = postgres.GetMappedPublicPort(5432);
-            await run($"Host=localhost;Port={port};Database=alpha_test;Username=alpha;Password=alpha-pass");
+            var connectionString = $"Host=localhost;Port={port};Database=alpha_test;Username=alpha;Password=alpha-pass";
+            await WaitForPostgresAsync(connectionString);
+            await run(connectionString);
         }
         finally
         {
             await postgres.DisposeAsync();
+        }
+    }
+
+    private static async Task WaitForPostgresAsync(string connectionString)
+    {
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(30);
+        while (true)
+        {
+            try
+            {
+                await using var connection = new NpgsqlConnection(connectionString);
+                await connection.OpenAsync();
+                await using var command = new NpgsqlCommand("select 1", connection);
+                await command.ExecuteScalarAsync();
+                return;
+            }
+            catch when (DateTimeOffset.UtcNow < deadline)
+            {
+                await Task.Delay(500);
+            }
         }
     }
 
