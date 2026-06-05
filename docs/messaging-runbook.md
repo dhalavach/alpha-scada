@@ -2,7 +2,9 @@
 
 This runbook covers the v1 messaging path:
 
-Edge/adapter MQTT telemetry -> NATS MQTT listener -> Telemetry normalization -> `TelemetryBatchStored` -> Asset/Alarm -> Gateway SignalR.
+Edge/native NATS telemetry -> NATS JetStream -> Telemetry normalization -> `TelemetryBatchStored` -> Asset/Alarm -> Gateway SignalR.
+
+The current Alpha JSON simulator path publishes dot-delimited NATS subjects such as `alpha.demo-operator.demo-energy-site.chp-demo-001.telemetry`. NATS' MQTT listener remains available for future external adapters and Sparkplug B work, but slash-delimited MQTT topics are not the current simulator/test path.
 
 ## Quick Health Check
 
@@ -103,8 +105,9 @@ docker compose logs --tail 200 edge
 
 Common causes:
 
-- Edge publisher credentials do not match the NATS MQTT listener.
-- The topic does not match `alpha/{tenant}/{site}/{unit}/telemetry`.
+- Edge publisher credentials do not match the NATS server credentials.
+- The subject does not match `alpha.{tenant}.{site}.{unit}.telemetry`.
+- Tenant, site, or unit keys contain `.` or `/`, which breaks the subject parser and are intentionally rejected.
 - The tenant/site/unit/tag keys do not resolve through Tenant, Asset, or Tag Catalog.
 - The payload schema version has an unsupported major version.
 

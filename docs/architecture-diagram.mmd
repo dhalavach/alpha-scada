@@ -1,0 +1,128 @@
+flowchart LR
+    %% Alpha SCADA architecture diagram.
+    %% Copy this file into Mermaid Live Editor or MermaidChart to export PNG/SVG/PDF.
+
+    classDef public fill:#e8f5ff,stroke:#2563eb,stroke-width:1px,color:#0f172a
+    classDef service fill:#f8fafc,stroke:#64748b,stroke-width:1px,color:#0f172a
+    classDef broker fill:#eefdf5,stroke:#059669,stroke-width:1px,color:#0f172a
+    classDef store fill:#fff7ed,stroke:#ea580c,stroke-width:1px,color:#0f172a
+    classDef ops fill:#f5f3ff,stroke:#7c3aed,stroke-width:1px,color:#0f172a
+    classDef edge fill:#f0fdfa,stroke:#0891b2,stroke-width:1px,color:#0f172a
+
+    subgraph Client["Operator / Browser"]
+        Browser["Browser"]
+        Ui["React/Vite UI<br/>Overview, Tags, Trends, Alarms, Reports, Admin"]
+    end
+
+    subgraph Public["Public Boundary"]
+        Nginx["frontend nginx<br/>serves SPA and proxies API"]
+        Gateway["Alpha.Scada.Gateway<br/>BFF, public REST API, SignalR"]
+    end
+
+    subgraph EdgeZone["Edge / OT Boundary"]
+        Simulator["Alpha.Scada.Edge<br/>optional CHP simulator"]
+        ExternalAdapter["Future field adapter<br/>Node-RED, PLC bridge, Sparkplug adapter"]
+    end
+
+    subgraph Broker["NATS Server + JetStream"]
+        AlphaEdge["ALPHA_EDGE<br/>alpha.*.*.*.telemetry<br/>spBv1.0.>"]
+        AlphaDomain["ALPHA_DOMAIN<br/>telemetry stored, status, alarms, report completed"]
+        AlphaJobs["ALPHA_JOBS<br/>alpha.report.requested"]
+    end
+
+    subgraph Services["Application Services"]
+        Identity["Identity<br/>users, roles, JWTs"]
+        Tenant["Tenant<br/>tenants and tenant-key lookup"]
+        Asset["Asset<br/>sites, units, online/offline status"]
+        TagCatalog["Tag Catalog<br/>tags, thresholds, report ontology"]
+        Telemetry["Telemetry<br/>adapter boundary, current values, Timescale history"]
+        Alarm["Alarm<br/>threshold, quality, communication-loss lifecycle"]
+        Reporting["Reporting<br/>monthly report jobs"]
+    end
+
+    subgraph Storage["TimescaleDB / PostgreSQL Container"]
+        DbIdentity[("alpha_identity")]
+        DbTenant[("alpha_tenant")]
+        DbAsset[("alpha_asset")]
+        DbTags[("alpha_tag_catalog")]
+        DbTelemetry[("alpha_telemetry<br/>tag_current, telemetry_samples hypertable,<br/>telemetry_minute continuous aggregate")]
+        DbAlarm[("alpha_alarm<br/>alarm_events, alarm_outbox")]
+        DbReporting[("alpha_reporting<br/>report_runs, Wolverine metadata")]
+        DbEdge[("alpha_edge")]
+    end
+
+    subgraph Ops["Operations"]
+        Prometheus["Prometheus<br/>optional ops profile"]
+        Grafana["Grafana<br/>optional dashboards"]
+        NatsMonitor["NATS monitoring<br/>/varz, /jsz, /connz"]
+    end
+
+    Browser --> Ui
+    Ui --> Nginx
+    Nginx -->|"HTTP /api/*"| Gateway
+    Nginx -.->|"SignalR /hubs/telemetry"| Gateway
+
+    Gateway -->|"JWT login"| Identity
+    Gateway -->|"inventory queries"| Tenant
+    Gateway -->|"site/unit queries"| Asset
+    Gateway -->|"tag/report-config queries"| TagCatalog
+    Gateway -->|"current/history queries"| Telemetry
+    Gateway -->|"alarm queries and ack"| Alarm
+    Gateway -->|"report list queries"| Reporting
+    Gateway -->|"publish ReportRequested"| AlphaJobs
+
+    Simulator -->|"native NATS JSON<br/>alpha.tenant.site.unit.telemetry"| AlphaEdge
+    ExternalAdapter -.->|"future Sparkplug / adapter ingress"| AlphaEdge
+    AlphaEdge -->|"raw payload consumed by adapter worker"| Telemetry
+
+    Telemetry -->|"resolve tenant"| Tenant
+    Telemetry -->|"resolve site/unit"| Asset
+    Telemetry -->|"resolve tags"| TagCatalog
+    Telemetry -->|"publish TelemetryBatchStored"| AlphaDomain
+
+    AlphaDomain -->|"TelemetryBatchStored"| Asset
+    AlphaDomain -->|"TelemetryBatchStored"| Alarm
+    AlphaDomain -->|"TelemetryBatchStored"| Gateway
+    Asset -->|"publish UnitStatusChanged"| AlphaDomain
+    Alarm -->|"publish alarm lifecycle events"| AlphaDomain
+    Reporting -->|"publish ReportCompleted"| AlphaDomain
+    AlphaJobs -->|"ReportRequested job"| Reporting
+
+    Reporting -->|"load report profile"| TagCatalog
+    Reporting -->|"load unit details"| Asset
+    Reporting -->|"request configured aggregates"| Telemetry
+    Reporting -->|"load alarm count"| Alarm
+
+    AlphaDomain -.->|"ReportCompleted, telemetry/status/alarm events"| Gateway
+    Gateway -.->|"SignalR updates"| Ui
+
+    Identity --> DbIdentity
+    Tenant --> DbTenant
+    Asset --> DbAsset
+    TagCatalog --> DbTags
+    Telemetry --> DbTelemetry
+    Alarm --> DbAlarm
+    Reporting --> DbReporting
+    Gateway -->|"Wolverine metadata only"| DbReporting
+    Simulator --> DbEdge
+
+    Prometheus --> Gateway
+    Prometheus --> Identity
+    Prometheus --> Tenant
+    Prometheus --> Asset
+    Prometheus --> TagCatalog
+    Prometheus --> Telemetry
+    Prometheus --> Alarm
+    Prometheus --> Reporting
+    Prometheus --> Simulator
+    Grafana --> Prometheus
+    NatsMonitor --> AlphaEdge
+    NatsMonitor --> AlphaDomain
+    NatsMonitor --> AlphaJobs
+
+    class Browser,Ui,Nginx,Gateway public
+    class Simulator,ExternalAdapter edge
+    class AlphaEdge,AlphaDomain,AlphaJobs broker
+    class Identity,Tenant,Asset,TagCatalog,Telemetry,Alarm,Reporting service
+    class DbIdentity,DbTenant,DbAsset,DbTags,DbTelemetry,DbAlarm,DbReporting,DbEdge store
+    class Prometheus,Grafana,NatsMonitor ops
