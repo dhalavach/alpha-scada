@@ -1,3 +1,13 @@
+/*
+ANNOTATION FOR LEARNING:
+- File: src/Alpha.Scada.Reporting/Infrastructure/ReportingMigrator.cs
+- Module role: Alpha.Scada.Reporting is the reporting service. It orchestrates monthly report generation by combining report ontology, telemetry aggregates, and alarm counts.
+- Local role: This file owns database schema creation and seed data for its service. In raw Npgsql systems this replaces an EF migration class.
+- Architecture connection: infrastructure files are allowed to know about PostgreSQL, SQL, and external protocols because they adapt the outside world to the application model.
+- .NET/C# concepts to notice: Npgsql is the low-level PostgreSQL driver; SQL is explicit here so storage shape and performance stay visible.
+- Reading tip: start with the public method/route/record names, then trace dependencies through constructor parameters; in .NET those parameters are usually supplied by the dependency-injection container.
+*/
+
 using Alpha.Scada.ServiceDefaults;
 using Npgsql;
 

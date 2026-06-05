@@ -1,3 +1,13 @@
+/*
+ANNOTATION FOR LEARNING:
+- File: src/Alpha.Scada.Alarm/Application/AlarmOutboxDispatcher.cs
+- Module role: Alpha.Scada.Alarm is the alarm service. It evaluates domain telemetry/status events against thresholds and quality rules, persists alarm lifecycle state, and publishes alarm changes.
+- Local role: This file is a hosted background process. ASP.NET Core starts it with the service and stops it with the host cancellation token.
+- Architecture connection: application files orchestrate use cases and message handling; they may call repositories/clients but should keep transport details at the boundary.
+- .NET/C# concepts to notice: BackgroundService is the .NET hosted-worker base class; ExecuteAsync runs until the host cancellation token is signaled. Wolverine is the in-process messaging abstraction; it routes commands/events and applies retry, inbox/outbox, and transport policies configured in ServiceDefaults. NATS subjects are dot-delimited routing keys; JetStream adds durable streams, consumers, acknowledgements, and duplicate detection. Npgsql is the low-level PostgreSQL driver; SQL is explicit here so storage shape and performance stay visible.
+- Reading tip: start with the public method/route/record names, then trace dependencies through constructor parameters; in .NET those parameters are usually supplied by the dependency-injection container.
+*/
+
 using System.Threading.Channels;
 using Alpha.Scada.Alarm.Contracts;
 using Alpha.Scada.Alarm.Infrastructure;

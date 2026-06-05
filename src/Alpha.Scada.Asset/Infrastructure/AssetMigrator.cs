@@ -1,3 +1,13 @@
+/*
+ANNOTATION FOR LEARNING:
+- File: src/Alpha.Scada.Asset/Infrastructure/AssetMigrator.cs
+- Module role: Alpha.Scada.Asset is the asset service. It owns sites, units, unit lookup by route key, online/offline status, and the bridge from stored telemetry events into operational unit health.
+- Local role: This file owns database schema creation and seed data for its service. In raw Npgsql systems this replaces an EF migration class.
+- Architecture connection: infrastructure files are allowed to know about PostgreSQL, SQL, and external protocols because they adapt the outside world to the application model.
+- .NET/C# concepts to notice: Npgsql is the low-level PostgreSQL driver; SQL is explicit here so storage shape and performance stay visible.
+- Reading tip: start with the public method/route/record names, then trace dependencies through constructor parameters; in .NET those parameters are usually supplied by the dependency-injection container.
+*/
+
 using Alpha.Scada.ServiceDefaults;
 using Npgsql;
 

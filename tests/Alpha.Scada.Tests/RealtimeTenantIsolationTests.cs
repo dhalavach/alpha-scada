@@ -1,3 +1,13 @@
+/*
+ANNOTATION FOR LEARNING:
+- File: tests/Alpha.Scada.Tests/RealtimeTenantIsolationTests.cs
+- Module role: Alpha.Scada.Tests is the test suite. These files are executable documentation for architecture decisions, service behavior, and integration edges.
+- Local role: This file mostly defines DTOs/messages. C# records are used here because cross-boundary payloads should be immutable, comparable value shapes.
+- Architecture connection: tests double as executable architecture notes, especially where they verify tenant isolation, broker behavior, schema config, and failure handling.
+- .NET/C# concepts to notice: Authentication/authorization are standard ASP.NET Core concepts: middleware validates tokens, then policies/claims decide access. SignalR provides server-to-browser realtime delivery; Gateway owns that public realtime boundary. xUnit attributes mark tests; Testcontainers spins real Postgres/NATS containers so integration tests exercise production-like dependencies. C# records are concise immutable data carriers with value-based equality, useful for DTOs and domain events.
+- Reading tip: start with the public method/route/record names, then trace dependencies through constructor parameters; in .NET those parameters are usually supplied by the dependency-injection container.
+*/
+
 using System.Security.Claims;
 using Alpha.Scada.Alarm.Contracts;
 using Alpha.Scada.Asset.Contracts;
