@@ -8,12 +8,9 @@ ANNOTATION FOR LEARNING:
 - Reading tip: start with the public method/route/record names, then trace dependencies through constructor parameters; in .NET those parameters are usually supplied by the dependency-injection container.
 */
 
-// LEARN: imports a namespace so this file can refer to its types without fully qualified names.
 using Alpha.Scada.Contracts;
-// LEARN: imports a namespace so this file can refer to its types without fully qualified names.
 using Alpha.Scada.Tenant.Infrastructure;
 
-// LEARN: declares the logical namespace; namespaces organize types and help dependency direction stay visible.
 namespace Alpha.Scada.Tenant.Application;
 
 // LEARN: declares a class; sealed means no other class can inherit from it.
@@ -21,16 +18,13 @@ public sealed class TenantService(TenantRepository repository)
 {
 // LEARN: declares a method that returns a Task, the .NET representation of asynchronous work.
     public Task<IReadOnlyCollection<TenantDto>> GetTenantsAsync(CurrentUserDto user, CancellationToken cancellationToken) =>
-// LEARN: executes one C# statement; semicolons terminate most statements.
         repository.GetTenantsAsync(user, cancellationToken);
 
 // LEARN: declares a method that returns a Task, the .NET representation of asynchronous work.
     public Task<TenantDto?> ResolveAsync(string tenantKey, CancellationToken cancellationToken) =>
-// LEARN: executes one C# statement; semicolons terminate most statements.
         repository.ResolveAsync(tenantKey, cancellationToken);
 
 // LEARN: declares a method that returns a Task, the .NET representation of asynchronous work.
     public Task<TenantDto?> GetByIdAsync(Guid tenantId, CancellationToken cancellationToken) =>
-// LEARN: executes one C# statement; semicolons terminate most statements.
         repository.GetByIdAsync(tenantId, cancellationToken);
 }

@@ -8,26 +8,16 @@ ANNOTATION FOR LEARNING:
 - Reading tip: start with the public method/route/record names, then trace dependencies through constructor parameters; in .NET those parameters are usually supplied by the dependency-injection container.
 */
 
-// LEARN: declares the logical namespace; namespaces organize types and help dependency direction stay visible.
 namespace Alpha.Scada.TagCatalog.Domain;
 
 // LEARN: declares an immutable C# record, commonly used for DTOs and message contracts.
 public sealed record TagDefinition(
-// LEARN: continues an argument/object/collection initializer onto the next line.
     Guid Id,
-// LEARN: continues an argument/object/collection initializer onto the next line.
     Guid TenantId,
-// LEARN: continues an argument/object/collection initializer onto the next line.
     Guid UnitId,
-// LEARN: continues an argument/object/collection initializer onto the next line.
     string Key,
-// LEARN: continues an argument/object/collection initializer onto the next line.
     string Name,
-// LEARN: continues an argument/object/collection initializer onto the next line.
     string Subsystem,
-// LEARN: continues an argument/object/collection initializer onto the next line.
     string EngineeringUnit,
-// LEARN: continues an argument/object/collection initializer onto the next line.
     double? AlarmLow,
-// LEARN: executes one C# statement; semicolons terminate most statements.
     double? AlarmHigh);

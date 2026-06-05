@@ -8,14 +8,10 @@ ANNOTATION FOR LEARNING:
 - Reading tip: start with the public method/route/record names, then trace dependencies through constructor parameters; in .NET those parameters are usually supplied by the dependency-injection container.
 */
 
-// LEARN: imports a namespace so this file can refer to its types without fully qualified names.
 using Alpha.Scada.Gateway.Realtime;
-// LEARN: imports a namespace so this file can refer to its types without fully qualified names.
 using Alpha.Scada.Reporting.Contracts;
-// LEARN: imports a namespace so this file can refer to its types without fully qualified names.
 using Microsoft.AspNetCore.SignalR;
 
-// LEARN: declares the logical namespace; namespaces organize types and help dependency direction stay visible.
 namespace Alpha.Scada.Gateway.Application;
 
 // LEARN: declares a class; sealed means no other class can inherit from it.
@@ -23,23 +19,14 @@ public sealed class ReportCompletedHandler(IHubContext<TelemetryHub> hub)
 {
 // LEARN: declares a method that returns a Task, the .NET representation of asynchronous work.
     public Task Handle(ReportCompleted message, CancellationToken cancellationToken) =>
-// LEARN: continues the current C# construct; indentation shows the surrounding scope.
         hub.Clients.Group(TelemetryHub.TenantGroup(message.TenantId))
-// LEARN: continues the current C# construct; indentation shows the surrounding scope.
             .SendAsync("reportCompleted", new
             {
-// LEARN: continues an argument/object/collection initializer onto the next line.
                 message.RequestId,
-// LEARN: continues an argument/object/collection initializer onto the next line.
                 message.ReportId,
-// LEARN: continues an argument/object/collection initializer onto the next line.
                 message.TenantId,
-// LEARN: continues an argument/object/collection initializer onto the next line.
                 message.UnitId,
-// LEARN: continues an argument/object/collection initializer onto the next line.
                 message.Period,
-// LEARN: continues the current C# construct; indentation shows the surrounding scope.
                 message.CompletedAtUtc
-// LEARN: executes one C# statement; semicolons terminate most statements.
             }, cancellationToken);
 }

@@ -8,7 +8,6 @@ ANNOTATION FOR LEARNING:
 - Reading tip: start with the public method/route/record names, then trace dependencies through constructor parameters; in .NET those parameters are usually supplied by the dependency-injection container.
 */
 
-// LEARN: declares the logical namespace; namespaces organize types and help dependency direction stay visible.
 namespace Alpha.Scada.Contracts;
 
 // LEARN: declares an immutable C# record, commonly used for DTOs and message contracts.
@@ -26,13 +25,9 @@ public sealed record CurrentUserDto(Guid UserId, Guid TenantId, string Email, st
 // LEARN: declares a static helper class whose members are called on the type itself.
 public static class Roles
 {
-// LEARN: declares a member with explicit visibility so the type boundary is clear.
     public const string Admin = "Admin";
-// LEARN: declares a member with explicit visibility so the type boundary is clear.
     public const string Operator = "Operator";
-// LEARN: declares a member with explicit visibility so the type boundary is clear.
     public const string Viewer = "Viewer";
-// LEARN: declares a member with explicit visibility so the type boundary is clear.
     public const string SupportEngineer = "SupportEngineer";
 }
 

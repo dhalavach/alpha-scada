@@ -8,36 +8,26 @@ ANNOTATION FOR LEARNING:
 - Reading tip: start with the public method/route/record names, then trace dependencies through constructor parameters; in .NET those parameters are usually supplied by the dependency-injection container.
 */
 
-// LEARN: imports a namespace so this file can refer to its types without fully qualified names.
 using Alpha.Scada.Contracts;
-// LEARN: imports a namespace so this file can refer to its types without fully qualified names.
 using Alpha.Scada.ServiceDefaults;
-// LEARN: imports a namespace so this file can refer to its types without fully qualified names.
 using Npgsql;
-// LEARN: imports a namespace so this file can refer to its types without fully qualified names.
 using NpgsqlTypes;
 
-// LEARN: declares the logical namespace; namespaces organize types and help dependency direction stay visible.
 namespace Alpha.Scada.Telemetry.Infrastructure;
 
 // LEARN: declares a class; sealed means no other class can inherit from it.
 public sealed class TelemetryRepository
 {
-// LEARN: declares a member with explicit visibility so the type boundary is clear.
     private readonly NpgsqlDataSource dataSource;
 
-// LEARN: declares a member such as a method or constructor; parameters describe what collaborators/data it needs.
     public TelemetryRepository(NpgsqlDataSource dataSource)
     {
-// LEARN: executes one C# statement; semicolons terminate most statements.
         this.dataSource = dataSource;
     }
 
 // LEARN: declares an asynchronous method that can await non-blocking I/O.
     public async Task IngestAsync(
-// LEARN: continues an argument/object/collection initializer onto the next line.
         TelemetryIngestRequest request,
-// LEARN: passes cancellation so shutdowns, timeouts, and aborted requests can stop work cooperatively.
         CancellationToken cancellationToken)
     {
 // LEARN: opens an async-disposable resource and guarantees it is cleaned up asynchronously.
@@ -56,47 +46,31 @@ public sealed class TelemetryRepository
         NpgsqlConnection connection,
 // LEARN: works directly with PostgreSQL through Npgsql rather than an ORM.
         NpgsqlTransaction transaction,
-// LEARN: continues an argument/object/collection initializer onto the next line.
         TelemetryIngestRequest request,
-// LEARN: passes cancellation so shutdowns, timeouts, and aborted requests can stop work cooperatively.
         CancellationToken cancellationToken)
     {
-// LEARN: declares a local variable; var lets the compiler infer the C# type from the right-hand side.
         var count = request.Samples.Count;
 // LEARN: branches only when the boolean condition is true.
         if (count == 0)
         {
-// LEARN: returns a value or exits the current method.
             return;
         }
 
-// LEARN: declares a local variable; var lets the compiler infer the C# type from the right-hand side.
         var tagIds = new Guid[count];
-// LEARN: declares a local variable; var lets the compiler infer the C# type from the right-hand side.
         var tagKeys = new string[count];
-// LEARN: declares a local variable; var lets the compiler infer the C# type from the right-hand side.
         var timestamps = new DateTimeOffset[count];
-// LEARN: declares a local variable; var lets the compiler infer the C# type from the right-hand side.
         var values = new double[count];
-// LEARN: declares a local variable; var lets the compiler infer the C# type from the right-hand side.
         var qualities = new string[count];
 
-// LEARN: declares a local variable; var lets the compiler infer the C# type from the right-hand side.
         var index = 0;
 // LEARN: loops over each item in a collection.
         foreach (var sample in request.Samples)
         {
-// LEARN: executes one C# statement; semicolons terminate most statements.
             tagIds[index] = sample.TagId;
-// LEARN: executes one C# statement; semicolons terminate most statements.
             tagKeys[index] = sample.TagKey;
-// LEARN: executes one C# statement; semicolons terminate most statements.
             timestamps[index] = sample.SourceTimestampUtc;
-// LEARN: executes one C# statement; semicolons terminate most statements.
             values[index] = sample.Value;
-// LEARN: executes one C# statement; semicolons terminate most statements.
             qualities[index] = sample.Quality;
-// LEARN: executes one C# statement; semicolons terminate most statements.
             index++;
         }
 
@@ -119,9 +93,7 @@ public sealed class TelemetryRepository
                 timestamp_utc = excluded.timestamp_utc
             where tag_current.timestamp_utc <= excluded.timestamp_utc;
             """, connection, transaction);
-// LEARN: executes one C# statement; semicolons terminate most statements.
         command.Parameters.AddWithValue("tenant_id", request.TenantId);
-// LEARN: executes one C# statement; semicolons terminate most statements.
         command.Parameters.AddWithValue("unit_id", request.UnitId);
 // LEARN: works directly with PostgreSQL through Npgsql rather than an ORM.
         command.Parameters.Add(new NpgsqlParameter("tag_ids", NpgsqlDbType.Array | NpgsqlDbType.Uuid) { Value = tagIds });
@@ -148,36 +120,24 @@ public sealed class TelemetryRepository
             from tag_current
             where unit_id = @unit_id and (@is_support or tenant_id = @tenant_id)
             """, connection);
-// LEARN: executes one C# statement; semicolons terminate most statements.
         command.Parameters.AddWithValue("unit_id", unitId);
-// LEARN: executes one C# statement; semicolons terminate most statements.
         command.Parameters.AddWithValue("tenant_id", user.TenantId);
-// LEARN: executes one C# statement; semicolons terminate most statements.
         command.Parameters.AddWithValue("is_support", RoleRules.IsSupport(user.Role));
-// LEARN: declares a local variable; var lets the compiler infer the C# type from the right-hand side.
         var results = new List<TagValueDto>();
 // LEARN: opens an async-disposable resource and guarantees it is cleaned up asynchronously.
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
 // LEARN: starts a loop that continues while its condition remains true.
         while (await reader.ReadAsync(cancellationToken))
         {
-// LEARN: creates a new object or record instance.
             results.Add(new TagValueDto(
-// LEARN: continues an argument/object/collection initializer onto the next line.
                 reader.GetGuid(0),
-// LEARN: continues an argument/object/collection initializer onto the next line.
                 reader.GetGuid(1),
-// LEARN: continues an argument/object/collection initializer onto the next line.
                 reader.GetGuid(2),
-// LEARN: continues an argument/object/collection initializer onto the next line.
                 reader.GetDouble(3),
-// LEARN: continues an argument/object/collection initializer onto the next line.
                 reader.GetString(4),
-// LEARN: executes one C# statement; semicolons terminate most statements.
                 reader.GetFieldValue<DateTimeOffset>(5)));
         }
 
-// LEARN: returns a value or exits the current method.
         return results;
     }
 
@@ -195,49 +155,33 @@ public sealed class TelemetryRepository
               and (@is_support or tenant_id = @tenant_id)
             order by timestamp_utc
             """, connection);
-// LEARN: executes one C# statement; semicolons terminate most statements.
         command.Parameters.AddWithValue("tag_id", tagId);
-// LEARN: executes one C# statement; semicolons terminate most statements.
         command.Parameters.AddWithValue("cutoff", DateTimeOffset.UtcNow.Subtract(window));
-// LEARN: executes one C# statement; semicolons terminate most statements.
         command.Parameters.AddWithValue("tenant_id", user.TenantId);
-// LEARN: executes one C# statement; semicolons terminate most statements.
         command.Parameters.AddWithValue("is_support", RoleRules.IsSupport(user.Role));
-// LEARN: declares a local variable; var lets the compiler infer the C# type from the right-hand side.
         var results = new List<TelemetryHistoryPointDto>();
 // LEARN: opens an async-disposable resource and guarantees it is cleaned up asynchronously.
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
 // LEARN: starts a loop that continues while its condition remains true.
         while (await reader.ReadAsync(cancellationToken))
         {
-// LEARN: creates a new object or record instance.
             results.Add(new TelemetryHistoryPointDto(reader.GetFieldValue<DateTimeOffset>(0), reader.GetDouble(1), reader.GetString(2)));
         }
 
-// LEARN: returns a value or exits the current method.
         return results;
     }
 
 // LEARN: declares an asynchronous method that can await non-blocking I/O.
     public async Task<ReportAggregateDto> GetReportAggregateAsync(Guid unitId, ReportAggregateRequest request, CancellationToken cancellationToken)
     {
-// LEARN: executes one C# statement; semicolons terminate most statements.
         ValidateReportBindings(request.MetricBindings);
-// LEARN: declares a local variable; var lets the compiler infer the C# type from the right-hand side.
         var range = MonthPeriod.Parse(request.Period);
-// LEARN: declares a local variable; var lets the compiler infer the C# type from the right-hand side.
         var bindings = request.MetricBindings.ToArray();
-// LEARN: declares a local variable; var lets the compiler infer the C# type from the right-hand side.
         var metricKeys = bindings.Select(binding => binding.MetricKey).ToArray();
-// LEARN: declares a local variable; var lets the compiler infer the C# type from the right-hand side.
         var tagIds = bindings.Select(binding => binding.TagId).ToArray();
-// LEARN: declares a local variable; var lets the compiler infer the C# type from the right-hand side.
         var aggregationTypes = bindings.Select(binding => binding.AggregationType).ToArray();
-// LEARN: declares a local variable; var lets the compiler infer the C# type from the right-hand side.
         var scales = bindings.Select(binding => binding.Scale).ToArray();
-// LEARN: declares a local variable; var lets the compiler infer the C# type from the right-hand side.
         var thresholds = bindings.Select(binding => binding.Threshold ?? 0).ToArray();
-// LEARN: declares a local variable; var lets the compiler infer the C# type from the right-hand side.
         var hasThresholds = bindings.Select(binding => binding.Threshold.HasValue).ToArray();
 
 // LEARN: opens an async-disposable resource and guarantees it is cleaned up asynchronously.
@@ -265,9 +209,7 @@ public sealed class TelemetryRepository
             left join minute_samples m on m.tag_id = b.tag_id
             group by b.metric_key, b.aggregation_type, b.scale, b.threshold, b.has_threshold
             """, connection);
-// LEARN: executes one C# statement; semicolons terminate most statements.
         command.Parameters.AddWithValue("period_start", range.StartUtc);
-// LEARN: executes one C# statement; semicolons terminate most statements.
         command.Parameters.AddWithValue("period_end", range.EndUtc);
 // LEARN: works directly with PostgreSQL through Npgsql rather than an ORM.
         command.Parameters.Add(new NpgsqlParameter("metric_keys", NpgsqlDbType.Array | NpgsqlDbType.Text) { Value = metricKeys });
@@ -283,62 +225,42 @@ public sealed class TelemetryRepository
         command.Parameters.Add(new NpgsqlParameter("has_thresholds", NpgsqlDbType.Array | NpgsqlDbType.Boolean) { Value = hasThresholds });
 // LEARN: opens an async-disposable resource and guarantees it is cleaned up asynchronously.
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-// LEARN: declares a local variable; var lets the compiler infer the C# type from the right-hand side.
         var valuesByMetric = new Dictionary<string, double>();
 // LEARN: starts a loop that continues while its condition remains true.
         while (await reader.ReadAsync(cancellationToken))
         {
-// LEARN: executes one C# statement; semicolons terminate most statements.
             valuesByMetric[reader.GetString(0)] = reader.GetDouble(1);
         }
 
-// LEARN: returns a value or exits the current method.
         return new ReportAggregateDto(
-// LEARN: continues an argument/object/collection initializer onto the next line.
             Math.Round(valuesByMetric.GetValueOrDefault(ReportMetricKeys.ElectricalKwh), 1),
-// LEARN: continues an argument/object/collection initializer onto the next line.
             Math.Round(valuesByMetric.GetValueOrDefault(ReportMetricKeys.ThermalKwh), 1),
-// LEARN: continues an argument/object/collection initializer onto the next line.
             Math.Round(valuesByMetric.GetValueOrDefault(ReportMetricKeys.RuntimeHours), 1),
-// LEARN: executes one C# statement; semicolons terminate most statements.
             Math.Round(valuesByMetric.GetValueOrDefault(ReportMetricKeys.WoodChipsKg), 1));
     }
 
-// LEARN: declares a member such as a method or constructor; parameters describe what collaborators/data it needs.
     private static void ValidateReportBindings(IReadOnlyCollection<ReportMetricBindingDto> bindings)
     {
-// LEARN: declares a local variable; var lets the compiler infer the C# type from the right-hand side.
         var missing = new[]
         {
-// LEARN: continues an argument/object/collection initializer onto the next line.
             ReportMetricKeys.ElectricalKwh,
-// LEARN: continues an argument/object/collection initializer onto the next line.
             ReportMetricKeys.ThermalKwh,
-// LEARN: continues an argument/object/collection initializer onto the next line.
             ReportMetricKeys.RuntimeHours,
-// LEARN: continues the current C# construct; indentation shows the surrounding scope.
             ReportMetricKeys.WoodChipsKg
-// LEARN: uses pattern/expression syntax to map an input to an output or behavior.
         }.Where(metric => bindings.All(binding => binding.MetricKey != metric)).ToArray();
 // LEARN: branches only when the boolean condition is true.
         if (missing.Length > 0)
         {
-// LEARN: throws an exception to signal that this path cannot continue safely.
             throw new InvalidOperationException($"Report aggregate config is missing metric bindings: {string.Join(", ", missing)}.");
         }
 
-// LEARN: declares a local variable; var lets the compiler infer the C# type from the right-hand side.
         var unsupported = bindings
-// LEARN: uses pattern/expression syntax to map an input to an output or behavior.
             .Where(binding => binding.AggregationType is not ("sum_per_minute" or "runtime_hours"))
-// LEARN: uses pattern/expression syntax to map an input to an output or behavior.
             .Select(binding => $"{binding.MetricKey}:{binding.AggregationType}")
-// LEARN: executes one C# statement; semicolons terminate most statements.
             .ToArray();
 // LEARN: branches only when the boolean condition is true.
         if (unsupported.Length > 0)
         {
-// LEARN: throws an exception to signal that this path cannot continue safely.
             throw new InvalidOperationException($"Report aggregate config contains unsupported aggregation types: {string.Join(", ", unsupported)}.");
         }
     }

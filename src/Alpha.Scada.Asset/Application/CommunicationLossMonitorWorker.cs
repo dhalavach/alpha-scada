@@ -8,16 +8,12 @@ ANNOTATION FOR LEARNING:
 - Reading tip: start with the public method/route/record names, then trace dependencies through constructor parameters; in .NET those parameters are usually supplied by the dependency-injection container.
 */
 
-// LEARN: declares the logical namespace; namespaces organize types and help dependency direction stay visible.
 namespace Alpha.Scada.Asset.Application;
 
 // LEARN: declares a class; sealed means no other class can inherit from it.
 public sealed class CommunicationLossMonitorWorker(
-// LEARN: continues an argument/object/collection initializer onto the next line.
     IConfiguration configuration,
-// LEARN: continues an argument/object/collection initializer onto the next line.
     AssetService service,
-// LEARN: continues an argument/object/collection initializer onto the next line.
     Wolverine.IMessageBus bus,
 // LEARN: inherits from BackgroundService, the ASP.NET Core base type for long-running hosted workers.
     ILogger<CommunicationLossMonitorWorker> logger) : BackgroundService
@@ -30,13 +26,10 @@ public sealed class CommunicationLossMonitorWorker(
         {
 // LEARN: writes structured log output; placeholders become searchable log fields.
             logger.LogInformation("Communication-loss monitor is disabled.");
-// LEARN: returns a value or exits the current method.
             return;
         }
 
-// LEARN: declares a local variable; var lets the compiler infer the C# type from the right-hand side.
         var intervalSeconds = configuration.GetValue("CommunicationLoss:IntervalSeconds", 30);
-// LEARN: declares a local variable; var lets the compiler infer the C# type from the right-hand side.
         var staleMinutes = configuration.GetValue("CommunicationLoss:StaleMinutes", 2);
 
 // LEARN: starts a loop that continues while its condition remains true.
@@ -45,7 +38,6 @@ public sealed class CommunicationLossMonitorWorker(
 // LEARN: starts a protected block whose exceptions can be handled below.
             try
             {
-// LEARN: declares a local variable; var lets the compiler infer the C# type from the right-hand side.
                 var offlineUnits = await service.MarkStaleUnitsOfflineAsync(staleMinutes, stoppingToken);
 // LEARN: branches only when the boolean condition is true.
                 if (offlineUnits.Count > 0)
@@ -64,7 +56,6 @@ public sealed class CommunicationLossMonitorWorker(
 // LEARN: handles a specific exception path; filters with when further narrow when it applies.
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
-// LEARN: executes one C# statement; semicolons terminate most statements.
                 break;
             }
 // LEARN: handles a specific exception path; filters with when further narrow when it applies.

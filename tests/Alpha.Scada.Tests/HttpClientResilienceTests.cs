@@ -8,12 +8,9 @@ ANNOTATION FOR LEARNING:
 - Reading tip: start with the public method/route/record names, then trace dependencies through constructor parameters; in .NET those parameters are usually supplied by the dependency-injection container.
 */
 
-// LEARN: imports a namespace so this file can refer to its types without fully qualified names.
 using Alpha.Scada.ServiceDefaults;
-// LEARN: imports a namespace so this file can refer to its types without fully qualified names.
 using Microsoft.Extensions.DependencyInjection;
 
-// LEARN: declares the logical namespace; namespaces organize types and help dependency direction stay visible.
 namespace Alpha.Scada.Tests;
 
 // LEARN: declares a class; sealed means no other class can inherit from it.
@@ -21,25 +18,17 @@ public sealed class HttpClientResilienceTests
 {
 // LEARN: marks this method as a single xUnit test case.
     [Fact]
-// LEARN: declares a member such as a method or constructor; parameters describe what collaborators/data it needs.
     public void Alpha_resilience_policy_registers_for_named_http_client()
     {
-// LEARN: declares a local variable; var lets the compiler infer the C# type from the right-hand side.
         var services = new ServiceCollection();
 
-// LEARN: continues the current C# construct; indentation shows the surrounding scope.
         services
-// LEARN: uses pattern/expression syntax to map an input to an output or behavior.
             .AddHttpClient("downstream", client => client.BaseAddress = new Uri("http://localhost"))
-// LEARN: executes one C# statement; semicolons terminate most statements.
             .AddAlphaResilience();
 
-// LEARN: imports a namespace so this file can refer to its types without fully qualified names.
         using var provider = services.BuildServiceProvider();
-// LEARN: declares a local variable; var lets the compiler infer the C# type from the right-hand side.
         var factory = provider.GetRequiredService<IHttpClientFactory>();
 
-// LEARN: imports a namespace so this file can refer to its types without fully qualified names.
         using var client = factory.CreateClient("downstream");
 
 // LEARN: asserts expected test behavior; if this condition fails, the test fails.

@@ -8,41 +8,26 @@ ANNOTATION FOR LEARNING:
 - Reading tip: start with the public method/route/record names, then trace dependencies through constructor parameters; in .NET those parameters are usually supplied by the dependency-injection container.
 */
 
-// LEARN: imports a namespace so this file can refer to its types without fully qualified names.
 using Alpha.Scada.Alarm.Contracts;
-// LEARN: imports a namespace so this file can refer to its types without fully qualified names.
 using Alpha.Scada.Asset.Contracts;
-// LEARN: imports a namespace so this file can refer to its types without fully qualified names.
 using Alpha.Scada.Reporting.Contracts;
-// LEARN: imports a namespace so this file can refer to its types without fully qualified names.
 using Alpha.Scada.ServiceDefaults.Messaging;
-// LEARN: imports a namespace so this file can refer to its types without fully qualified names.
 using Alpha.Scada.Telemetry.Contracts;
-// LEARN: imports a namespace so this file can refer to its types without fully qualified names.
 using Wolverine;
 
-// LEARN: declares the logical namespace; namespaces organize types and help dependency direction stay visible.
 namespace Alpha.Scada.Gateway;
 
 // LEARN: declares a static helper class whose members are called on the type itself.
 public static class MessagingTopology
 {
-// LEARN: declares a member such as a method or constructor; parameters describe what collaborators/data it needs.
     public static void Configure(WolverineOptions options)
     {
-// LEARN: executes one C# statement; semicolons terminate most statements.
         options.PublishReportRequest<ReportRequested>();
-// LEARN: executes one C# statement; semicolons terminate most statements.
         options.ListenForDomainEvent(Topics.ReportCompleted, "gateway-report-completed");
-// LEARN: executes one C# statement; semicolons terminate most statements.
         options.ListenForDomainEvent(Topics.AlarmRaisedEvent, "gateway-alarm-raised");
-// LEARN: executes one C# statement; semicolons terminate most statements.
         options.ListenForDomainEvent(Topics.AlarmClearedEvent, "gateway-alarm-cleared");
-// LEARN: executes one C# statement; semicolons terminate most statements.
         options.ListenForDomainEvent(Topics.AlarmAcknowledgedEvent, "gateway-alarm-acknowledged");
-// LEARN: executes one C# statement; semicolons terminate most statements.
         options.ListenForDomainEvent(Topics.StatusChangedEvent, "gateway-status");
-// LEARN: executes one C# statement; semicolons terminate most statements.
         options.ListenForDomainEvent(Topics.TelemetryStoredEvent, "gateway-telemetry-stored");
     }
 }

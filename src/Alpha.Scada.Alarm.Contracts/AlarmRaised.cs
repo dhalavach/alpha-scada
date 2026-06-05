@@ -8,32 +8,20 @@ ANNOTATION FOR LEARNING:
 - Reading tip: start with the public method/route/record names, then trace dependencies through constructor parameters; in .NET those parameters are usually supplied by the dependency-injection container.
 */
 
-// LEARN: declares the logical namespace; namespaces organize types and help dependency direction stay visible.
 namespace Alpha.Scada.Alarm.Contracts;
 
 // LEARN: declares an immutable C# record, commonly used for DTOs and message contracts.
 public sealed record AlarmRaised(
-// LEARN: continues an argument/object/collection initializer onto the next line.
     Guid AlarmId,
-// LEARN: continues an argument/object/collection initializer onto the next line.
     Guid TenantId,
-// LEARN: continues an argument/object/collection initializer onto the next line.
     Guid UnitId,
-// LEARN: continues an argument/object/collection initializer onto the next line.
     Guid? TagId,
-// LEARN: continues an argument/object/collection initializer onto the next line.
     string TenantKey,
-// LEARN: continues an argument/object/collection initializer onto the next line.
     string SiteKey,
-// LEARN: continues an argument/object/collection initializer onto the next line.
     string UnitKey,
-// LEARN: continues an argument/object/collection initializer onto the next line.
     string Severity,
-// LEARN: continues an argument/object/collection initializer onto the next line.
     string Message,
-// LEARN: continues the current C# construct; indentation shows the surrounding scope.
     DateTimeOffset RaisedAtUtc)
 {
-// LEARN: declares a member with explicit visibility so the type boundary is clear.
     public const string SchemaVersion = "1.0";
 }

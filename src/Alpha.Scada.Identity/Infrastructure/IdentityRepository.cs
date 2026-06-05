@@ -8,14 +8,10 @@ ANNOTATION FOR LEARNING:
 - Reading tip: start with the public method/route/record names, then trace dependencies through constructor parameters; in .NET those parameters are usually supplied by the dependency-injection container.
 */
 
-// LEARN: imports a namespace so this file can refer to its types without fully qualified names.
 using Alpha.Scada.Contracts;
-// LEARN: imports a namespace so this file can refer to its types without fully qualified names.
 using Alpha.Scada.Identity.Domain;
-// LEARN: imports a namespace so this file can refer to its types without fully qualified names.
 using Npgsql;
 
-// LEARN: declares the logical namespace; namespaces organize types and help dependency direction stay visible.
 namespace Alpha.Scada.Identity.Infrastructure;
 
 // LEARN: declares a class; sealed means no other class can inherit from it.
@@ -32,15 +28,11 @@ public sealed class IdentityRepository(NpgsqlDataSource dataSource)
             from users
             where lower(email) = lower(@email)
             """, connection);
-// LEARN: executes one C# statement; semicolons terminate most statements.
         command.Parameters.AddWithValue("email", email);
 // LEARN: opens an async-disposable resource and guarantees it is cleaned up asynchronously.
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-// LEARN: returns a value or exits the current method.
         return await reader.ReadAsync(cancellationToken)
-// LEARN: creates a new object or record instance.
             ? new UserAccount(reader.GetGuid(0), reader.GetGuid(1), reader.GetString(2), reader.GetString(3), reader.GetString(4), reader.GetString(5))
-// LEARN: executes one C# statement; semicolons terminate most statements.
             : null;
     }
 
@@ -54,13 +46,9 @@ public sealed class IdentityRepository(NpgsqlDataSource dataSource)
             insert into audit_events (id, tenant_id, user_id, event_type, message, created_at_utc)
             values (gen_random_uuid(), @tenant_id, @user_id, @event_type, @message, now())
             """, connection);
-// LEARN: executes one C# statement; semicolons terminate most statements.
         command.Parameters.AddWithValue("tenant_id", (object?)tenantId ?? DBNull.Value);
-// LEARN: executes one C# statement; semicolons terminate most statements.
         command.Parameters.AddWithValue("user_id", (object?)userId ?? DBNull.Value);
-// LEARN: executes one C# statement; semicolons terminate most statements.
         command.Parameters.AddWithValue("event_type", eventType);
-// LEARN: executes one C# statement; semicolons terminate most statements.
         command.Parameters.AddWithValue("message", message);
 // LEARN: awaits asynchronous work so the current thread can be reused while I/O is pending.
         await command.ExecuteNonQueryAsync(cancellationToken);

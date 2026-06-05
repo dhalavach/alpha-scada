@@ -8,20 +8,15 @@ ANNOTATION FOR LEARNING:
 - Reading tip: start with the public method/route/record names, then trace dependencies through constructor parameters; in .NET those parameters are usually supplied by the dependency-injection container.
 */
 
-// LEARN: imports a namespace so this file can refer to its types without fully qualified names.
 using Alpha.Scada.ServiceDefaults.Messaging;
-// LEARN: imports a namespace so this file can refer to its types without fully qualified names.
 using Alpha.Scada.Telemetry.Contracts;
-// LEARN: imports a namespace so this file can refer to its types without fully qualified names.
 using Wolverine;
 
-// LEARN: declares the logical namespace; namespaces organize types and help dependency direction stay visible.
 namespace Alpha.Scada.Telemetry;
 
 // LEARN: declares a static helper class whose members are called on the type itself.
 public static class MessagingTopology
 {
-// LEARN: declares a member such as a method or constructor; parameters describe what collaborators/data it needs.
     public static void Configure(WolverineOptions options)
     {
 // LEARN: configures Wolverine to publish this domain event to a NATS subject.

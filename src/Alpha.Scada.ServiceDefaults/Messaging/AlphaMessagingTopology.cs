@@ -8,12 +8,9 @@ ANNOTATION FOR LEARNING:
 - Reading tip: start with the public method/route/record names, then trace dependencies through constructor parameters; in .NET those parameters are usually supplied by the dependency-injection container.
 */
 
-// LEARN: imports a namespace so this file can refer to its types without fully qualified names.
 using Wolverine;
-// LEARN: imports a namespace so this file can refer to its types without fully qualified names.
 using Wolverine.Nats;
 
-// LEARN: declares the logical namespace; namespaces organize types and help dependency direction stay visible.
 namespace Alpha.Scada.ServiceDefaults.Messaging;
 
 // LEARN: declares a static helper class whose members are called on the type itself.
@@ -24,34 +21,27 @@ public static class AlphaMessagingTopology
     {
 // LEARN: works with NATS/JetStream, the message broker and durable stream layer.
         options.PublishMessage<T>().ToNatsSubject(subject).UseJetStream(Topics.DomainStream);
-// LEARN: returns a value or exits the current method.
         return options;
     }
 
-// LEARN: declares a member such as a method or constructor; parameters describe what collaborators/data it needs.
     public static WolverineOptions ListenForDomainEvent(this WolverineOptions options, string subject, string durableName)
     {
 // LEARN: works with NATS/JetStream, the message broker and durable stream layer.
         options.ListenToNatsSubject(subject).UseJetStream(Topics.DomainStream, durableName);
-// LEARN: returns a value or exits the current method.
         return options;
     }
 
-// LEARN: declares a member such as a method or constructor; parameters describe what collaborators/data it needs.
     public static WolverineOptions PublishReportRequest<T>(this WolverineOptions options)
     {
 // LEARN: works with NATS/JetStream, the message broker and durable stream layer.
         options.PublishMessage<T>().ToNatsSubject(Topics.ReportRequested).UseJetStream(Topics.JobsStream);
-// LEARN: returns a value or exits the current method.
         return options;
     }
 
-// LEARN: declares a member such as a method or constructor; parameters describe what collaborators/data it needs.
     public static WolverineOptions ListenForReportRequests(this WolverineOptions options, string durableName)
     {
 // LEARN: works with NATS/JetStream, the message broker and durable stream layer.
         options.ListenToNatsSubject(Topics.ReportRequested).UseJetStream(Topics.JobsStream, durableName);
-// LEARN: returns a value or exits the current method.
         return options;
     }
 }
