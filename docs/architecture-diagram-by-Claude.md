@@ -2,6 +2,7 @@
 
 > _Authored by Claude (Opus 4.8) on 2026-06-05 (codebase @ `fc21040`)._
 > _Companion to [`ARCHITECTURE-by-Claude.md`](ARCHITECTURE-by-Claude.md). GitHub renders the Mermaid blocks below._
+> _For a first-pass stakeholder view, use [`architecture-diagram-by-Claude-simple.md`](architecture-diagram-by-Claude-simple.md)._
 
 ---
 
