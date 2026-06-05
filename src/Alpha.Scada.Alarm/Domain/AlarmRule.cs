@@ -8,29 +8,40 @@ ANNOTATION FOR LEARNING:
 - Reading tip: start with the public method/route/record names, then trace dependencies through constructor parameters; in .NET those parameters are usually supplied by the dependency-injection container.
 */
 
+// LEARN: imports a namespace so this file can refer to its types without fully qualified names.
 using Alpha.Scada.Contracts;
 
+// LEARN: declares the logical namespace; namespaces organize types and help dependency direction stay visible.
 namespace Alpha.Scada.Alarm.Domain;
 
+// LEARN: declares a static helper class whose members are called on the type itself.
 public static class AlarmRule
 {
+// LEARN: declares a member such as a method or constructor; parameters describe what collaborators/data it needs.
     public static (bool IsAlarm, string Severity, string Message) Evaluate(ResolvedTelemetrySample sample)
     {
+// LEARN: branches only when the boolean condition is true.
         if (sample.Quality != "good")
         {
+// LEARN: returns a value or exits the current method.
             return (true, sample.Subsystem == "Safety" ? "critical" : "warning", $"{sample.TagName} quality is {sample.Quality}");
         }
 
+// LEARN: branches only when the boolean condition is true.
         if (sample.AlarmLow is not null && sample.Value < sample.AlarmLow)
         {
+// LEARN: returns a value or exits the current method.
             return (true, sample.Subsystem == "Safety" ? "critical" : "warning", $"{sample.TagName} below low threshold");
         }
 
+// LEARN: branches only when the boolean condition is true.
         if (sample.AlarmHigh is not null && sample.Value > sample.AlarmHigh)
         {
+// LEARN: returns a value or exits the current method.
             return (true, sample.Subsystem == "Safety" ? "critical" : "warning", $"{sample.TagName} above high threshold");
         }
 
+// LEARN: returns a value or exits the current method.
         return (false, "", "");
     }
 }

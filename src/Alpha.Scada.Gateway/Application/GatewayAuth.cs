@@ -8,15 +8,21 @@ ANNOTATION FOR LEARNING:
 - Reading tip: start with the public method/route/record names, then trace dependencies through constructor parameters; in .NET those parameters are usually supplied by the dependency-injection container.
 */
 
+// LEARN: imports a namespace so this file can refer to its types without fully qualified names.
 using Alpha.Scada.ServiceDefaults;
 
+// LEARN: declares the logical namespace; namespaces organize types and help dependency direction stay visible.
 namespace Alpha.Scada.Gateway.Application;
 
+// LEARN: declares a static helper class whose members are called on the type itself.
 public static class GatewayAuth
 {
+// LEARN: declares a member such as a method or constructor; parameters describe what collaborators/data it needs.
     public static HttpRequestMessage WithBearerToken(this HttpRequestMessage request, HttpContext context)
     {
+// LEARN: executes one C# statement; semicolons terminate most statements.
         request.ForwardAuthorizationFrom(context.Request);
+// LEARN: returns a value or exits the current method.
         return request;
     }
 }

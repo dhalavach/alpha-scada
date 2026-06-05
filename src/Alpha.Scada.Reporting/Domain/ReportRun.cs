@@ -8,6 +8,8 @@ ANNOTATION FOR LEARNING:
 - Reading tip: start with the public method/route/record names, then trace dependencies through constructor parameters; in .NET those parameters are usually supplied by the dependency-injection container.
 */
 
+// LEARN: declares the logical namespace; namespaces organize types and help dependency direction stay visible.
 namespace Alpha.Scada.Reporting.Domain;
 
+// LEARN: declares an immutable C# record, commonly used for DTOs and message contracts.
 public sealed record ReportRun(Guid Id, Guid TenantId, Guid UnitId, string Period, DateTimeOffset GeneratedAtUtc);

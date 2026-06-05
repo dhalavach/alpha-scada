@@ -8,36 +8,55 @@ ANNOTATION FOR LEARNING:
 - Reading tip: start with the public method/route/record names, then trace dependencies through constructor parameters; in .NET those parameters are usually supplied by the dependency-injection container.
 */
 
+// LEARN: imports a namespace so this file can refer to its types without fully qualified names.
 using Alpha.Scada.ServiceDefaults;
+// LEARN: imports a namespace so this file can refer to its types without fully qualified names.
 using Microsoft.Extensions.Configuration;
+// LEARN: imports a namespace so this file can refer to its types without fully qualified names.
 using Npgsql;
 
+// LEARN: declares the logical namespace; namespaces organize types and help dependency direction stay visible.
 namespace Alpha.Scada.Telemetry.Infrastructure;
 
+// LEARN: declares a class; sealed means no other class can inherit from it.
 public sealed class TelemetryMigrator : SqlDatabaseMigrator
 {
+// LEARN: declares a member with explicit visibility so the type boundary is clear.
     private const int DefaultRetentionDays = 365;
+// LEARN: declares a member with explicit visibility so the type boundary is clear.
     private const int ChunkIntervalDays = 1;
+// LEARN: declares a member with explicit visibility so the type boundary is clear.
     private const int CompressAfterDays = 7;
 
+// LEARN: declares a member such as a method or constructor; parameters describe what collaborators/data it needs.
     public TelemetryMigrator(
+// LEARN: works directly with PostgreSQL through Npgsql rather than an ORM.
         NpgsqlDataSource dataSource,
+// LEARN: continues an argument/object/collection initializer onto the next line.
         IConfiguration configuration,
+// LEARN: continues the current C# construct; indentation shows the surrounding scope.
         ILogger<TelemetryMigrator> logger)
+// LEARN: continues the current C# construct; indentation shows the surrounding scope.
         : base(dataSource, logger)
     {
+// LEARN: executes one C# statement; semicolons terminate most statements.
         Migrations = BuildMigrations(configuration);
     }
 
+// LEARN: declares a member such as a method or constructor; parameters describe what collaborators/data it needs.
     public TelemetryMigrator(NpgsqlDataSource dataSource, ILogger<TelemetryMigrator> logger)
+// LEARN: creates a new object or record instance.
         : this(dataSource, new ConfigurationBuilder().Build(), logger)
     {
     }
 
+// LEARN: continues the current C# construct; indentation shows the surrounding scope.
     protected override IReadOnlyList<SqlMigration> Migrations { get; }
 
+// LEARN: works directly with PostgreSQL through Npgsql rather than an ORM.
     protected override async Task SeedAsync(NpgsqlConnection connection, CancellationToken cancellationToken)
     {
+// LEARN: opens an async-disposable resource and guarantees it is cleaned up asynchronously.
         await using var continuousAggregate = new NpgsqlCommand("""
             create materialized view if not exists telemetry_minute
             with (timescaledb.continuous, timescaledb.materialized_only = false) as
@@ -55,19 +74,27 @@ public sealed class TelemetryMigrator : SqlDatabaseMigrator
                 schedule_interval => interval '1 minute',
                 if_not_exists => true);
             """, connection);
+// LEARN: awaits asynchronous work so the current thread can be reused while I/O is pending.
         await continuousAggregate.ExecuteNonQueryAsync(cancellationToken);
     }
 
+// LEARN: declares a member such as a method or constructor; parameters describe what collaborators/data it needs.
     private static IReadOnlyList<SqlMigration> BuildMigrations(IConfiguration configuration)
     {
+// LEARN: declares a local variable; var lets the compiler infer the C# type from the right-hand side.
         var retentionDays = configuration.GetValue("Timescale:RetentionDays", DefaultRetentionDays);
+// LEARN: branches only when the boolean condition is true.
         if (retentionDays <= 0)
         {
+// LEARN: throws an exception to signal that this path cannot continue safely.
             throw new InvalidOperationException("Timescale:RetentionDays must be a positive integer.");
         }
 
+// LEARN: returns a value or exits the current method.
         return
+// LEARN: continues the current C# construct; indentation shows the surrounding scope.
         [
+// LEARN: continues the current C# construct; indentation shows the surrounding scope.
             new("001_initial", """
                 create table if not exists tag_current (
                     tenant_id uuid not null,
@@ -96,6 +123,7 @@ public sealed class TelemetryMigrator : SqlDatabaseMigrator
                 create index if not exists ix_telemetry_tenant_unit_time on telemetry_samples(tenant_id, unit_id, timestamp_utc desc);
                 create index if not exists ix_telemetry_unit_time on telemetry_samples(unit_id, timestamp_utc desc);
                 """),
+// LEARN: continues the current C# construct; indentation shows the surrounding scope.
             new("002_timescaledb", $$"""
                 create extension if not exists timescaledb;
 

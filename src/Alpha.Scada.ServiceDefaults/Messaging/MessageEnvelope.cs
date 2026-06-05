@@ -8,6 +8,7 @@ ANNOTATION FOR LEARNING:
 - Reading tip: start with the public method/route/record names, then trace dependencies through constructor parameters; in .NET those parameters are usually supplied by the dependency-injection container.
 */
 
+// LEARN: declares the logical namespace; namespaces organize types and help dependency direction stay visible.
 namespace Alpha.Scada.ServiceDefaults.Messaging;
 
 /// <summary>
@@ -15,11 +16,19 @@ namespace Alpha.Scada.ServiceDefaults.Messaging;
 /// produced by Wolverine. Wolverine-native NATS messages use Wolverine's own
 /// envelope and durable inbox/outbox metadata.
 /// </summary>
+// LEARN: declares an immutable C# record, commonly used for DTOs and message contracts.
 public sealed record MessageEnvelope<T>(
+// LEARN: continues an argument/object/collection initializer onto the next line.
     Guid MessageId,
+// LEARN: continues an argument/object/collection initializer onto the next line.
     Guid? CorrelationId,
+// LEARN: continues an argument/object/collection initializer onto the next line.
     Guid? CausationId,
+// LEARN: continues an argument/object/collection initializer onto the next line.
     Guid? TenantId,
+// LEARN: continues an argument/object/collection initializer onto the next line.
     string SchemaVersion,
+// LEARN: continues an argument/object/collection initializer onto the next line.
     DateTimeOffset OccurredAtUtc,
+// LEARN: executes one C# statement; semicolons terminate most statements.
     T Payload);

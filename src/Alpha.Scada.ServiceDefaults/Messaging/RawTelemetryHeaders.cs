@@ -8,9 +8,12 @@ ANNOTATION FOR LEARNING:
 - Reading tip: start with the public method/route/record names, then trace dependencies through constructor parameters; in .NET those parameters are usually supplied by the dependency-injection container.
 */
 
+// LEARN: declares the logical namespace; namespaces organize types and help dependency direction stay visible.
 namespace Alpha.Scada.ServiceDefaults.Messaging;
 
+// LEARN: declares a static helper class whose members are called on the type itself.
 public static class RawTelemetryHeaders
 {
+// LEARN: declares a member with explicit visibility so the type boundary is clear.
     public const string NatsMessageId = "Nats-Msg-Id";
 }

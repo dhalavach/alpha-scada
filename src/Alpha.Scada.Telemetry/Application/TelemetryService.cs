@@ -8,22 +8,34 @@ ANNOTATION FOR LEARNING:
 - Reading tip: start with the public method/route/record names, then trace dependencies through constructor parameters; in .NET those parameters are usually supplied by the dependency-injection container.
 */
 
+// LEARN: imports a namespace so this file can refer to its types without fully qualified names.
 using Alpha.Scada.Contracts;
+// LEARN: imports a namespace so this file can refer to its types without fully qualified names.
 using Alpha.Scada.Telemetry.Infrastructure;
 
+// LEARN: declares the logical namespace; namespaces organize types and help dependency direction stay visible.
 namespace Alpha.Scada.Telemetry.Application;
 
+// LEARN: declares a class; sealed means no other class can inherit from it.
 public sealed class TelemetryService(TelemetryRepository repository)
 {
+// LEARN: declares a method that returns a Task, the .NET representation of asynchronous work.
     public Task IngestAsync(TelemetryIngestRequest request, CancellationToken cancellationToken) =>
+// LEARN: executes one C# statement; semicolons terminate most statements.
         repository.IngestAsync(request, cancellationToken);
 
+// LEARN: declares a method that returns a Task, the .NET representation of asynchronous work.
     public Task<IReadOnlyCollection<TagValueDto>> GetCurrentAsync(Guid unitId, CurrentUserDto user, CancellationToken cancellationToken) =>
+// LEARN: executes one C# statement; semicolons terminate most statements.
         repository.GetCurrentAsync(unitId, user, cancellationToken);
 
+// LEARN: declares a method that returns a Task, the .NET representation of asynchronous work.
     public Task<IReadOnlyCollection<TelemetryHistoryPointDto>> GetHistoryAsync(Guid tagId, TimeSpan window, CurrentUserDto user, CancellationToken cancellationToken) =>
+// LEARN: executes one C# statement; semicolons terminate most statements.
         repository.GetHistoryAsync(tagId, window, user, cancellationToken);
 
+// LEARN: declares a method that returns a Task, the .NET representation of asynchronous work.
     public Task<ReportAggregateDto> GetReportAggregateAsync(Guid unitId, ReportAggregateRequest request, CancellationToken cancellationToken) =>
+// LEARN: executes one C# statement; semicolons terminate most statements.
         repository.GetReportAggregateAsync(unitId, request, cancellationToken);
 }

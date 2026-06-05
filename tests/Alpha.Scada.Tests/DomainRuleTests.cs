@@ -8,162 +8,284 @@ ANNOTATION FOR LEARNING:
 - Reading tip: start with the public method/route/record names, then trace dependencies through constructor parameters; in .NET those parameters are usually supplied by the dependency-injection container.
 */
 
+// LEARN: imports a namespace so this file can refer to its types without fully qualified names.
 using System.Text;
+// LEARN: imports a namespace so this file can refer to its types without fully qualified names.
 using System.Text.Json;
+// LEARN: imports a namespace so this file can refer to its types without fully qualified names.
 using Alpha.Scada.Alarm.Domain;
+// LEARN: imports a namespace so this file can refer to its types without fully qualified names.
 using Alpha.Scada.Contracts;
+// LEARN: imports a namespace so this file can refer to its types without fully qualified names.
 using Alpha.Scada.Contracts.Messaging;
+// LEARN: imports a namespace so this file can refer to its types without fully qualified names.
 using Alpha.Scada.Identity.Infrastructure;
+// LEARN: imports a namespace so this file can refer to its types without fully qualified names.
 using Alpha.Scada.ServiceDefaults.Messaging;
+// LEARN: imports a namespace so this file can refer to its types without fully qualified names.
 using Alpha.Scada.Telemetry.Application;
+// LEARN: imports a namespace so this file can refer to its types without fully qualified names.
 using Alpha.Scada.Telemetry.Application.Messaging;
 
+// LEARN: declares the logical namespace; namespaces organize types and help dependency direction stay visible.
 namespace Alpha.Scada.Tests;
 
+// LEARN: declares a class; sealed means no other class can inherit from it.
 public sealed class DomainRuleTests
 {
+// LEARN: marks this method as a parameterized xUnit test that receives InlineData rows.
     [Theory]
+// LEARN: supplies one set of arguments to the parameterized test below.
     [InlineData("Safety", "bad", 50, null, null, true, "critical")]
+// LEARN: supplies one set of arguments to the parameterized test below.
     [InlineData("Engine", "uncertain", 50, null, null, true, "warning")]
+// LEARN: supplies one set of arguments to the parameterized test below.
     [InlineData("Engine", "good", -1.0, 0.0, 100.0, true, "warning")]
+// LEARN: supplies one set of arguments to the parameterized test below.
     [InlineData("Engine", "good", 101.0, 0.0, 100.0, true, "warning")]
+// LEARN: supplies one set of arguments to the parameterized test below.
     [InlineData("Engine", "good", 50.0, 0.0, 100.0, false, "")]
+// LEARN: declares a member such as a method or constructor; parameters describe what collaborators/data it needs.
     public void Alarm_rule_evaluates_quality_and_thresholds(
+// LEARN: continues an argument/object/collection initializer onto the next line.
         string subsystem,
+// LEARN: continues an argument/object/collection initializer onto the next line.
         string quality,
+// LEARN: continues an argument/object/collection initializer onto the next line.
         double value,
+// LEARN: continues an argument/object/collection initializer onto the next line.
         double? low,
+// LEARN: continues an argument/object/collection initializer onto the next line.
         double? high,
+// LEARN: continues an argument/object/collection initializer onto the next line.
         bool expectedAlarm,
+// LEARN: continues the current C# construct; indentation shows the surrounding scope.
         string expectedSeverity)
     {
+// LEARN: declares a local variable; var lets the compiler infer the C# type from the right-hand side.
         var result = AlarmRule.Evaluate(new ResolvedTelemetrySample(
+// LEARN: continues an argument/object/collection initializer onto the next line.
             Guid.NewGuid(),
+// LEARN: continues an argument/object/collection initializer onto the next line.
             "engine.electrical_output_kw",
+// LEARN: continues an argument/object/collection initializer onto the next line.
             "Electrical Output",
+// LEARN: continues an argument/object/collection initializer onto the next line.
             subsystem,
+// LEARN: continues an argument/object/collection initializer onto the next line.
             "kW",
+// LEARN: continues an argument/object/collection initializer onto the next line.
             low,
+// LEARN: continues an argument/object/collection initializer onto the next line.
             high,
+// LEARN: continues an argument/object/collection initializer onto the next line.
             value,
+// LEARN: continues an argument/object/collection initializer onto the next line.
             quality,
+// LEARN: executes one C# statement; semicolons terminate most statements.
             DateTimeOffset.UtcNow));
 
+// LEARN: asserts expected test behavior; if this condition fails, the test fails.
         Assert.Equal(expectedAlarm, result.IsAlarm);
+// LEARN: asserts expected test behavior; if this condition fails, the test fails.
         Assert.Equal(expectedSeverity, result.Severity);
     }
 
+// LEARN: marks this method as a parameterized xUnit test that receives InlineData rows.
     [Theory]
+// LEARN: supplies one set of arguments to the parameterized test below.
     [InlineData("")]
+// LEARN: supplies one set of arguments to the parameterized test below.
     [InlineData("alpha.demo.site.unit")]
+// LEARN: supplies one set of arguments to the parameterized test below.
     [InlineData("other.demo.site.unit.telemetry")]
+// LEARN: supplies one set of arguments to the parameterized test below.
     [InlineData("alpha.demo.site.unit.status")]
+// LEARN: supplies one set of arguments to the parameterized test below.
     [InlineData("alpha.demo.site.unit.telemetry.extra")]
+// LEARN: supplies one set of arguments to the parameterized test below.
     [InlineData("alpha/demo/site/unit/telemetry")]
+// LEARN: supplies one set of arguments to the parameterized test below.
     [InlineData("alpha.demo.site.unit/with-slash.telemetry")]
+// LEARN: supplies one set of arguments to the parameterized test below.
     [InlineData("alpha.de.mo.site.unit.telemetry")]
+// LEARN: supplies one set of arguments to the parameterized test below.
     [InlineData("alpha.demo.si.te.unit.telemetry")]
+// LEARN: supplies one set of arguments to the parameterized test below.
     [InlineData("alpha.demo.site.un.it.telemetry")]
+// LEARN: supplies one set of arguments to the parameterized test below.
     [InlineData("alpha.demo.site.extra.segment.telemetry")]
+// LEARN: declares a member such as a method or constructor; parameters describe what collaborators/data it needs.
     public void Telemetry_topic_parser_rejects_invalid_topics(string topic)
     {
+// LEARN: asserts expected test behavior; if this condition fails, the test fails.
         Assert.Null(TelemetryTopicParser.Parse(topic));
     }
 
+// LEARN: marks this method as a single xUnit test case.
     [Fact]
+// LEARN: declares a member such as a method or constructor; parameters describe what collaborators/data it needs.
     public void Telemetry_topic_parser_extracts_route_keys()
     {
+// LEARN: declares a local variable; var lets the compiler infer the C# type from the right-hand side.
         var parsed = TelemetryTopicParser.Parse("alpha.demo.site.unit-001.telemetry");
 
+// LEARN: asserts expected test behavior; if this condition fails, the test fails.
         Assert.NotNull(parsed);
+// LEARN: asserts expected test behavior; if this condition fails, the test fails.
         Assert.Equal(new TelemetryTopic("demo", "site", "unit-001"), parsed);
     }
 
+// LEARN: marks this method as a single xUnit test case.
     [Fact]
+// LEARN: declares a member such as a method or constructor; parameters describe what collaborators/data it needs.
     public void Telemetry_subject_helper_uses_native_nats_dots()
     {
+// LEARN: asserts expected test behavior; if this condition fails, the test fails.
         Assert.Equal(
+// LEARN: continues an argument/object/collection initializer onto the next line.
             "alpha.demo-operator.demo-energy-site.chp-demo-001.telemetry",
+// LEARN: executes one C# statement; semicolons terminate most statements.
             Topics.Telemetry("demo-operator", "demo-energy-site", "chp-demo-001"));
     }
 
+// LEARN: marks this method as a single xUnit test case.
     [Fact]
+// LEARN: declares a member such as a method or constructor; parameters describe what collaborators/data it needs.
     public void Nats_json_telemetry_adapter_normalizes_header_free_payload()
     {
+// LEARN: declares a local variable; var lets the compiler infer the C# type from the right-hand side.
         var adapter = new NatsJsonTelemetryAdapter();
+// LEARN: declares a local variable; var lets the compiler infer the C# type from the right-hand side.
         var timestamp = DateTimeOffset.UtcNow;
+// LEARN: declares a local variable; var lets the compiler infer the C# type from the right-hand side.
         var payload = JsonSerializer.SerializeToUtf8Bytes(
+// LEARN: creates a new object or record instance.
             new TelemetryEnvelopeV1(
+// LEARN: continues an argument/object/collection initializer onto the next line.
                 TelemetryEnvelopeV1.SchemaVersion,
+// LEARN: continues an argument/object/collection initializer onto the next line.
                 "chp-demo-001",
+// LEARN: continues an argument/object/collection initializer onto the next line.
                 timestamp,
+// LEARN: continues an argument/object/collection initializer onto the next line.
                 [new("engine.electrical_output_kw", 61.2, "good", timestamp)]),
+// LEARN: serializes or deserializes JSON using System.Text.Json.
             new JsonSerializerOptions(JsonSerializerDefaults.Web));
 
+// LEARN: declares a local variable; var lets the compiler infer the C# type from the right-hand side.
         var telemetry = adapter.Normalize(
+// LEARN: continues an argument/object/collection initializer onto the next line.
             payload,
+// LEARN: creates a new object or record instance.
             new TelemetrySource(
+// LEARN: continues an argument/object/collection initializer onto the next line.
                 Topics.Telemetry("demo-operator", "demo-energy-site", "chp-demo-001"),
+// LEARN: creates a new object or record instance.
                 new Dictionary<string, string?>()));
 
+// LEARN: asserts expected test behavior; if this condition fails, the test fails.
         Assert.Equal("demo-operator", telemetry.TenantKey);
+// LEARN: asserts expected test behavior; if this condition fails, the test fails.
         Assert.Equal("demo-energy-site", telemetry.SiteKey);
+// LEARN: asserts expected test behavior; if this condition fails, the test fails.
         Assert.Equal("chp-demo-001", telemetry.UnitKey);
+// LEARN: declares a local variable; var lets the compiler infer the C# type from the right-hand side.
         var reading = Assert.Single(telemetry.Readings);
+// LEARN: asserts expected test behavior; if this condition fails, the test fails.
         Assert.Equal("engine.electrical_output_kw", reading.TagKey);
+// LEARN: asserts expected test behavior; if this condition fails, the test fails.
         Assert.Equal(61.2, reading.Value);
+// LEARN: asserts expected test behavior; if this condition fails, the test fails.
         Assert.Equal("good", reading.Quality);
     }
 
+// LEARN: marks this method as a single xUnit test case.
     [Fact]
+// LEARN: declares a member such as a method or constructor; parameters describe what collaborators/data it needs.
     public void Nats_json_telemetry_adapter_rejects_unsupported_schema()
     {
+// LEARN: declares a local variable; var lets the compiler infer the C# type from the right-hand side.
         var adapter = new NatsJsonTelemetryAdapter();
+// LEARN: declares a local variable; var lets the compiler infer the C# type from the right-hand side.
         var timestamp = DateTimeOffset.UtcNow;
+// LEARN: declares a local variable; var lets the compiler infer the C# type from the right-hand side.
         var payload = JsonSerializer.SerializeToUtf8Bytes(
+// LEARN: creates a new object or record instance.
             new TelemetryEnvelopeV1("2.0", "chp-demo-001", timestamp, []),
+// LEARN: serializes or deserializes JSON using System.Text.Json.
             new JsonSerializerOptions(JsonSerializerDefaults.Web));
 
+// LEARN: uses pattern/expression syntax to map an input to an output or behavior.
         Assert.Throws<InvalidTelemetryEnvelopeException>(() =>
+// LEARN: continues the current C# construct; indentation shows the surrounding scope.
             adapter.Normalize(
+// LEARN: continues an argument/object/collection initializer onto the next line.
                 payload,
+// LEARN: creates a new object or record instance.
                 new TelemetrySource(
+// LEARN: continues an argument/object/collection initializer onto the next line.
                     Topics.Telemetry("demo-operator", "demo-energy-site", "chp-demo-001"),
+// LEARN: creates a new object or record instance.
                     new Dictionary<string, string?>())));
     }
 
+// LEARN: marks this method as a single xUnit test case.
     [Fact]
+// LEARN: declares a member such as a method or constructor; parameters describe what collaborators/data it needs.
     public void Nats_json_telemetry_adapter_surfaces_malformed_json()
     {
+// LEARN: declares a local variable; var lets the compiler infer the C# type from the right-hand side.
         var adapter = new NatsJsonTelemetryAdapter();
 
+// LEARN: uses pattern/expression syntax to map an input to an output or behavior.
         Assert.Throws<JsonException>(() =>
+// LEARN: continues the current C# construct; indentation shows the surrounding scope.
             adapter.Normalize(
+// LEARN: continues an argument/object/collection initializer onto the next line.
                 Encoding.UTF8.GetBytes("{"),
+// LEARN: creates a new object or record instance.
                 new TelemetrySource(
+// LEARN: continues an argument/object/collection initializer onto the next line.
                     Topics.Telemetry("demo-operator", "demo-energy-site", "chp-demo-001"),
+// LEARN: creates a new object or record instance.
                     new Dictionary<string, string?>())));
     }
 
+// LEARN: marks this method as a parameterized xUnit test that receives InlineData rows.
     [Theory]
+// LEARN: supplies one set of arguments to the parameterized test below.
     [InlineData("")]
+// LEARN: supplies one set of arguments to the parameterized test below.
     [InlineData("not-a-hash")]
+// LEARN: supplies one set of arguments to the parameterized test below.
     [InlineData("pbkdf2-sha256.nope.salt.key")]
+// LEARN: supplies one set of arguments to the parameterized test below.
     [InlineData("pbkdf2-sha256.100000.not-base64.key")]
+// LEARN: declares a member such as a method or constructor; parameters describe what collaborators/data it needs.
     public void Password_verify_fails_closed_for_malformed_hashes(string hash)
     {
+// LEARN: asserts expected test behavior; if this condition fails, the test fails.
         Assert.False(PasswordHasher.Verify("password", hash));
     }
 
+// LEARN: marks this method as a single xUnit test case.
     [Fact]
+// LEARN: declares a member such as a method or constructor; parameters describe what collaborators/data it needs.
     public void Telemetry_envelope_schema_constant_matches_wire_version()
     {
+// LEARN: declares a local variable; var lets the compiler infer the C# type from the right-hand side.
         var envelope = new TelemetryEnvelopeV1(
+// LEARN: continues an argument/object/collection initializer onto the next line.
             TelemetryEnvelopeV1.SchemaVersion,
+// LEARN: continues an argument/object/collection initializer onto the next line.
             "unit-001",
+// LEARN: continues an argument/object/collection initializer onto the next line.
             DateTimeOffset.UtcNow,
+// LEARN: executes one C# statement; semicolons terminate most statements.
             []);
 
+// LEARN: asserts expected test behavior; if this condition fails, the test fails.
         Assert.Equal("1.0", envelope.PayloadSchemaVersion);
     }
 }

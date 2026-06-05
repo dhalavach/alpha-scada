@@ -8,16 +8,24 @@ ANNOTATION FOR LEARNING:
 - Reading tip: start with the public method/route/record names, then trace dependencies through constructor parameters; in .NET those parameters are usually supplied by the dependency-injection container.
 */
 
+// LEARN: imports a namespace so this file can refer to its types without fully qualified names.
 using Alpha.Scada.ServiceDefaults;
+// LEARN: imports a namespace so this file can refer to its types without fully qualified names.
 using Npgsql;
 
+// LEARN: declares the logical namespace; namespaces organize types and help dependency direction stay visible.
 namespace Alpha.Scada.Alarm.Infrastructure;
 
+// LEARN: declares a class; sealed means no other class can inherit from it.
 public sealed class AlarmMigrator(NpgsqlDataSource dataSource, ILogger<AlarmMigrator> logger) :
+// LEARN: continues the declaration above, usually listing constructor parameters or base types.
     SqlDatabaseMigrator(dataSource, logger)
 {
+// LEARN: continues the current C# construct; indentation shows the surrounding scope.
     protected override IReadOnlyList<SqlMigration> Migrations { get; } =
+// LEARN: continues the current C# construct; indentation shows the surrounding scope.
     [
+// LEARN: continues the current C# construct; indentation shows the surrounding scope.
         new("001_initial", """
             create extension if not exists pgcrypto;
 
@@ -40,6 +48,7 @@ public sealed class AlarmMigrator(NpgsqlDataSource dataSource, ILogger<AlarmMigr
             create unique index if not exists ux_alarm_active_tag on alarm_events(tag_id) where state in ('active', 'acknowledged');
             """),
 
+// LEARN: continues the current C# construct; indentation shows the surrounding scope.
         new("002_alarm_outbox", """
             create table if not exists alarm_outbox (
                 id uuid primary key,

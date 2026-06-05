@@ -8,24 +8,38 @@ ANNOTATION FOR LEARNING:
 - Reading tip: start with the public method/route/record names, then trace dependencies through constructor parameters; in .NET those parameters are usually supplied by the dependency-injection container.
 */
 
+// LEARN: imports a namespace so this file can refer to its types without fully qualified names.
 using Alpha.Scada.Alarm.Contracts;
+// LEARN: imports a namespace so this file can refer to its types without fully qualified names.
 using Alpha.Scada.Gateway.Realtime;
+// LEARN: imports a namespace so this file can refer to its types without fully qualified names.
 using Microsoft.AspNetCore.SignalR;
 
+// LEARN: declares the logical namespace; namespaces organize types and help dependency direction stay visible.
 namespace Alpha.Scada.Gateway.Application;
 
+// LEARN: declares a class; sealed means no other class can inherit from it.
 public sealed class AlarmBroadcastHandler(IHubContext<TelemetryHub> hub)
 {
+// LEARN: declares a method that returns a Task, the .NET representation of asynchronous work.
     public Task Handle(AlarmRaised message, CancellationToken cancellationToken) =>
+// LEARN: executes one C# statement; semicolons terminate most statements.
         BroadcastAsync(message.TenantId, message.UnitId, cancellationToken);
 
+// LEARN: declares a method that returns a Task, the .NET representation of asynchronous work.
     public Task Handle(AlarmCleared message, CancellationToken cancellationToken) =>
+// LEARN: executes one C# statement; semicolons terminate most statements.
         BroadcastAsync(message.TenantId, message.UnitId, cancellationToken);
 
+// LEARN: declares a method that returns a Task, the .NET representation of asynchronous work.
     public Task Handle(AlarmAcknowledged message, CancellationToken cancellationToken) =>
+// LEARN: executes one C# statement; semicolons terminate most statements.
         BroadcastAsync(message.TenantId, message.UnitId, cancellationToken);
 
+// LEARN: declares a method that returns a Task, the .NET representation of asynchronous work.
     private Task BroadcastAsync(Guid tenantId, Guid unitId, CancellationToken cancellationToken) =>
+// LEARN: continues the current C# construct; indentation shows the surrounding scope.
         hub.Clients.Group(TelemetryHub.TenantGroup(tenantId))
+// LEARN: creates a new object or record instance.
             .SendAsync("alarmsChanged", new { TenantId = tenantId, UnitId = unitId }, cancellationToken);
 }
