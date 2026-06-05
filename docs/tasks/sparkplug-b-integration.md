@@ -10,9 +10,9 @@
 
 ## 1. Context & Goal
 
-Today the platform ingests telemetry through the **NATS MQTT listener** using a custom JSON MQTT contract (`alpha/{tenantKey}/{siteKey}/{unitKey}/telemetry`, `TelemetryEnvelopeV1`) normalized by the Telemetry service. Sparkplug B is currently listed as a known gap in `system-overview.md`.
+Today the platform ingests Alpha JSON telemetry through native **NATS JetStream** subjects such as `alpha.demo-operator.demo-energy-site.chp-demo-001.telemetry`. `NatsJsonTelemetryAdapter` converts `TelemetryEnvelopeV1` into canonical telemetry inside the Telemetry service, Telemetry persists it, and downstream services consume `TelemetryBatchStored`. NATS also reserves `spBv1.0.>` for future Sparkplug ingress. Sparkplug B is currently listed as a known gap in `system-overview.md`.
 
-**Goal:** Accept telemetry from Sparkplug B–compliant edge nodes/devices **without rearchitecting the platform** — by translating Sparkplug into the existing canonical pipeline. The internal `TelemetryEnvelopeV1` contract and all downstream services (Telemetry, Alarm, Asset, Reporting, Gateway/SignalR) remain unchanged.
+**Goal:** Accept telemetry from Sparkplug B–compliant edge nodes/devices **without rearchitecting the platform** — by translating Sparkplug into the existing canonical telemetry pipeline. Downstream services (Alarm, Asset, Reporting, Gateway/SignalR) remain unchanged because they already consume Telemetry-owned domain events rather than raw edge protocols.
 
 **Scope of outbound messages.** Cloud-to-device **control and setpoints stay deferred** — that means **DCMD** and any **NCMD that writes device metrics are out of scope** for v1. The **one exception is `NCMD Node Control/Rebirth`**, which the adapter must be able to publish: it is a benign request that asks a node to re-announce its BIRTH, and it is *required* for correct ingestion recovery (see §4.1 and finding in §5/Phase 1). It does not control the process, so it is consistent with "no cloud-to-device control."
 
@@ -20,7 +20,12 @@ Today the platform ingests telemetry through the **NATS MQTT listener** using a 
 
 ## 2. Recommended Approach — Stateful adapter, not a rewrite
 
-Add a **Sparkplug-to-canonical adapter** that subscribes to the Sparkplug namespace, decodes protobuf, and re-emits the existing internal `TelemetryEnvelopeV1` / `TelemetryBatchStored`-shaped flow. This keeps Sparkplug **optional per deployment** and isolates protobuf/state complexity in one place.
+Add a **Sparkplug-to-canonical adapter** that subscribes to the Sparkplug namespace, decodes protobuf, and feeds the existing Telemetry normalization boundary. This keeps Sparkplug **optional per deployment** and isolates protobuf/state complexity in one place.
+
+Two implementation shapes are viable:
+
+1. **Preferred v1:** a separate `Alpha.Scada.Edge.Sparkplug` adapter consumes Sparkplug, resolves Sparkplug identity/metric names, and publishes normalized Alpha JSON to native NATS subjects such as `alpha.{tenantKey}.{siteKey}.{unitKey}.telemetry`.
+2. **Alternative:** a Telemetry-owned `ITelemetryAdapter` consumes `spBv1.0.>` directly and returns `CanonicalTelemetry`. This reduces one publish hop, but it brings Sparkplug alias/session state into the Telemetry service.
 
 **This is a *stateful* translator, not a pure format shim.** Sparkplug is report-by-exception with aliasing (see §4.1), so the adapter must hold, per edge node/device:
 - the **alias → metric-name** map learned from BIRTH, and
@@ -31,7 +36,7 @@ and **merge** each incoming DATA message against that state before emitting a ca
 ```
                           ┌──────────────────────────────────────────────┐
 spBv1.0/# (protobuf) ────▶│ Sparkplug Adapter                            │
-   NBIRTH/DBIRTH          │  • alias map + last-known-value per device   │──alpha/{t}/{s}/{u}/telemetry──▶ Telemetry ──▶ (unchanged downstream)
+   NBIRTH/DBIRTH          │  • alias map + last-known-value per device   │──alpha.t.s.u.telemetry──▶ Telemetry ──▶ (unchanged downstream)
    NDATA/DDATA (RBE)      │  • merge RBE DATA against state              │
    NDEATH/DDEATH/Will ────│  • ID + metric mapping                       │── NDEATH/DDEATH ─▶ Asset (explicit unit offline)
                           │                                              │── NCMD Node Control/Rebirth ─▶ (recover missing BIRTH)
@@ -47,7 +52,7 @@ Mirrors the existing "Edge is an adapter host" framing. Downstream services don'
 
 | Area | Requirement | v1 handling |
 |---|---|---|
-| Topic namespace | `spBv1.0/{GroupID}/{MsgType}/{EdgeNodeID}/{DeviceID}` | Subscribe `spBv1.0/#` (or scoped groups) |
+| Topic namespace | MQTT namespace `spBv1.0/{GroupID}/{MsgType}/{EdgeNodeID}/{DeviceID}` | Subscribe through NATS MQTT/raw NATS mapping under `spBv1.0.>` (or scoped groups) |
 | Message types | NBIRTH, DBIRTH, NDATA, DDATA, NDEATH, DDEATH, STATE, NCMD, DCMD | Consume BIRTH/DATA/DEATH/STATE; publish **only** `NCMD Node Control/Rebirth`; **DCMD + device-write NCMD deferred** |
 | Encoding | Google **Protobuf** for all payloads **except STATE** | Generate C# from `sparkplug_b.proto` (Eclipse Tahu) |
 | **STATE message** | **UTF-8 JSON** `{"online":<bool>,"timestamp":<ms>}` on `spBv1.0/STATE/{HostID}`, **QoS 1, retain=true** — the *only* non-protobuf Sparkplug message | Parse/emit as JSON; **never** route through the protobuf decoder |
@@ -95,7 +100,7 @@ Sparkplug DATA messages are **not** self-contained: a DDATA typically carries **
 
 **Phase 0 — Spike / proof (1–2 days)**
 - [ ] Generate C# from `sparkplug_b.proto`; decode a real NBIRTH+DDATA captured from Ignition/Tahu.
-- [ ] Confirm transport choice: Sparkplug protobuf payloads are raw MQTT messages, so the Sparkplug listener should consume from the NATS MQTT/JetStream path and hand decoded batches to the canonical telemetry pipeline. Validate exact client choice. *(decision §6.4)*
+- [ ] Confirm transport choice: Sparkplug protobuf payloads are raw MQTT messages, so the Sparkplug listener should consume from the NATS MQTT/JetStream path and hand decoded batches to the canonical telemetry pipeline. Validate whether v1 should publish normalized Alpha JSON to `alpha.{tenant}.{site}.{unit}.telemetry` or implement an in-process Telemetry `ITelemetryAdapter`. *(decision §6.4)*
 
 **Phase 1 — Adapter ingestion, stateful (core — ~1–1.5 weeks)**
 - [ ] New host project `Alpha.Scada.Edge.Sparkplug` (or extend Edge) — own MQTTnet client, `spBv1.0/#` subscription, correct per-type QoS.
@@ -103,7 +108,7 @@ Sparkplug DATA messages are **not** self-contained: a DDATA typically carries **
 - [ ] **RBE merge:** resolve aliases, merge changed metrics into state, emit merged snapshot (see §4.1).
 - [ ] **Cold-start recovery:** publish `NCMD Node Control/Rebirth` when a device's BIRTH/alias map is missing or a sequence gap is detected.
 - [ ] ID mapping resolver (config/table) → tenant/site/unit keys.
-- [ ] Metric→tag mapping; route `is_historical` to history-only; emit canonical `TelemetryEnvelopeV1` into existing ingestion.
+- [ ] Metric→tag mapping; route `is_historical` to history-only; emit normalized Alpha JSON into existing ingestion or call the canonical handler through the chosen adapter seam.
 - [ ] bdSeq/seq tracking; structured logging on gaps.
 
 **Phase 2 — Lifecycle & state (~1 week; ~2 weeks if Primary Host)**
@@ -115,7 +120,7 @@ Sparkplug DATA messages are **not** self-contained: a DDATA typically carries **
 - [ ] **Tenant isolation:** per-edge NATS/MQTT credentials and subject permissions so an edge can only publish into its own Group namespace (the Sparkplug Group space is flat; without this, one tenant's node could publish into another's group).
 - [ ] Adapter ACLs for `spBv1.0/#`, STATE topic (if host), and Rebirth NCMD topics.
 - [ ] Config flags to enable/disable Sparkplug per deployment; Compose + k3s wiring.
-- [ ] **ADR** (`docs/architecture-decisions/00X-sparkplug-b.md`) + update `system-overview.md` (move out of Known Limitations) and README MQTT contract section.
+- [ ] **ADR** (`docs/architecture-decisions/00X-sparkplug-b.md`) + update `system-overview.md` and README ingress/adapter sections.
 - [ ] Metrics/dashboards: decoded msgs, alias-cache misses, rebirth requests, seq gaps, deaths.
 
 ---
@@ -125,7 +130,7 @@ Sparkplug DATA messages are **not** self-contained: a DDATA typically carries **
 1. **Adapter placement** — new `Alpha.Scada.Edge.Sparkplug` project, or extend the existing Edge service? *(Recommend: new project, optional per deployment.)*
 2. **Is Alpha a Sparkplug Primary Host** (publishes JSON STATE, manages host session) or a **passive consumer**? *(Passive is simpler for v1; Primary Host is required if edge nodes are configured to gate publishing on consumer availability.)*
 3. **ID mapping strategy** — convention (encode tenant/site/unit in Group/Node/Device IDs) vs a **mapping table** (in Asset or Tag Catalog). *(Recommend: mapping table; real-world Sparkplug IDs rarely match our keys.)*
-4. **Transport** — confirm raw NATS/MQTT consumption for the Sparkplug side vs forcing it through Wolverine. *(Phase 0 validates.)*
+4. **Transport** — confirm raw NATS/MQTT consumption for the Sparkplug side and whether the normalized handoff is native NATS Alpha JSON or an in-process `ITelemetryAdapter`. *(Phase 0 validates.)*
 5. **Outbound scope** — confirm DCMD and device-write NCMD stay deferred, while **`NCMD Node Control/Rebirth` is in scope** (required for recovery, §4.1). 
 6. **Non-numeric / complex metrics** — decode-and-ignore in v1 (recommended), or store? Storing implies a non-`double` value path, which ripples into `TelemetryEnvelopeV1`, alarm evaluation, and the UI (all assume `double`) — a larger fork than a single column.
 7. **RBE emit shape** — merged full snapshot per emit (recommended, preserves downstream semantics) vs changed-tags-only (cheaper, partial batches to alarm eval).
@@ -147,7 +152,7 @@ Sparkplug DATA messages are **not** self-contained: a DDATA typically carries **
 ## 8. Risks
 
 - **Statefulness is the real cost.** RBE + aliasing + cold-start recovery make this a stateful translator with a recovery protocol, not a format shim — the bulk of the effort and the main correctness risk.
-- Sparkplug protobuf should stay outside Wolverine's native envelope handling, which likely means a raw NATS/MQTT consumer feeding the canonical pipeline.
+- Sparkplug protobuf should stay outside Wolverine's native envelope handling, which likely means a raw NATS/MQTT consumer feeding the canonical telemetry pipeline.
 - Primary Host + JSON STATE + rebirth handling is the trickiest compliance surface; defer (passive consumer) if acceptable.
 - High-frequency Sparkplug data should land on the existing **TimescaleDB** historian path so retention, compression, and continuous aggregates stay consistent with the JSON telemetry contract.
 - ID/metric mapping is the main integration-friction point; needs client-specific config.

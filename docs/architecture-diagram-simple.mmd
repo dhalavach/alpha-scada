@@ -1,0 +1,33 @@
+flowchart LR
+    %% Simplified Alpha SCADA architecture diagram.
+    %% Use this for stakeholder reviews and first-pass technical orientation.
+
+    classDef user fill:#e8f5ff,stroke:#2563eb,color:#0f172a
+    classDef gateway fill:#f5f3ff,stroke:#7c3aed,color:#0f172a
+    classDef service fill:#f8fafc,stroke:#64748b,color:#0f172a
+    classDef broker fill:#eefdf5,stroke:#059669,color:#0f172a
+    classDef data fill:#fff7ed,stroke:#ea580c,color:#0f172a
+    classDef edge fill:#ecfeff,stroke:#0891b2,color:#0f172a
+
+    Operator["Operator browser<br/>React UI"]:::user
+    Gateway["Gateway / BFF<br/>public API + SignalR"]:::gateway
+    Services["Domain services<br/>Identity, Tenant, Asset,<br/>Tag Catalog, Telemetry,<br/>Alarm, Reporting"]:::service
+    Nats["NATS JetStream<br/>telemetry, events, report jobs"]:::broker
+    Historian["TimescaleDB / PostgreSQL<br/>separate service databases"]:::data
+    Edge["Edge or field adapter<br/>simulator, Node-RED, future Sparkplug"]:::edge
+    Ops["Prometheus + Grafana<br/>health, metrics, dashboards"]:::service
+
+    Operator -->|"HTTPS / API calls"| Gateway
+    Gateway -.->|"live updates"| Operator
+
+    Gateway -->|"request/response queries"| Services
+    Gateway -->|"report jobs + realtime event subscriptions"| Nats
+
+    Edge -->|"raw telemetry<br/>alpha.tenant.site.unit.telemetry"| Nats
+    Nats -->|"raw telemetry"| Services
+    Services -->|"domain events<br/>telemetry stored, alarms, status, reports"| Nats
+
+    Services -->|"owned data"| Historian
+    Ops -->|"scrape / visualize"| Gateway
+    Ops -->|"scrape / visualize"| Services
+    Ops -->|"monitor streams"| Nats
