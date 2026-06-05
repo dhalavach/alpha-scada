@@ -1,7 +1,7 @@
 # Alpha SCADA Platform — README (by Claude)
 
 > _Authored by Claude (Opus 4.8) on 2026-06-05 from a full review of the repository at commit `fc21040`._
-> _This is a Claude-authored companion to the canonical [`README.md`](README.md). For the deep design, see [`docs/ARCHITECTURE-by-Claude.md`](docs/ARCHITECTURE-by-Claude.md); for diagrams, [`docs/architecture-diagram-by-Claude.md`](docs/architecture-diagram-by-Claude.md)._
+> _This is a Claude-authored companion to the canonical [`README.md`](README.md). For the deep design, see [`docs/ARCHITECTURE-by-Claude.md`](docs/ARCHITECTURE-by-Claude.md); for diagrams, see the simplified [`docs/architecture-diagram-by-Claude-simple.md`](docs/architecture-diagram-by-Claude-simple.md) and detailed [`docs/architecture-diagram-by-Claude.md`](docs/architecture-diagram-by-Claude.md) versions._
 
 ---
 
@@ -99,7 +99,8 @@ All domain services listen on `8080` on the internal Docker network and are **no
 ## Documentation
 
 - **Architecture (deep, by Claude):** [`docs/ARCHITECTURE-by-Claude.md`](docs/ARCHITECTURE-by-Claude.md)
-- **Diagrams (by Claude):** [`docs/architecture-diagram-by-Claude.md`](docs/architecture-diagram-by-Claude.md)
+- **Simplified diagram (by Claude):** [`docs/architecture-diagram-by-Claude-simple.md`](docs/architecture-diagram-by-Claude-simple.md)
+- **Detailed diagrams (by Claude):** [`docs/architecture-diagram-by-Claude.md`](docs/architecture-diagram-by-Claude.md)
 - Canonical system overview: [`docs/system-overview.md`](docs/system-overview.md)
 - Messaging ADR: [`docs/architecture-decisions/002-messaging.md`](docs/architecture-decisions/002-messaging.md)
 - Messaging runbook: [`docs/messaging-runbook.md`](docs/messaging-runbook.md)
