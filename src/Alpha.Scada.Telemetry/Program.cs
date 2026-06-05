@@ -3,6 +3,7 @@ using Alpha.Scada.ServiceDefaults;
 using Alpha.Scada.ServiceDefaults.Messaging;
 using Alpha.Scada.Telemetry;
 using Alpha.Scada.Telemetry.Application;
+using Alpha.Scada.Telemetry.Application.Messaging;
 using Alpha.Scada.Telemetry.Infrastructure;
 
 const string serviceName = "alpha-scada-telemetry";
@@ -13,7 +14,10 @@ builder.Services.AddAlphaMigrator<TelemetryMigrator>();
 builder.Services.AddSingleton<TelemetryRepository>();
 builder.Services.AddSingleton<TelemetryService>();
 builder.Services.AddSingleton<CatalogCache>();
-builder.Services.AddSingleton<TelemetryEnvelopeV1Handler>();
+builder.Services.AddSingleton<ITelemetryAdapter, NatsJsonTelemetryAdapter>();
+builder.Services.AddSingleton<TelemetryAdapterResolver>();
+builder.Services.AddSingleton<CanonicalTelemetryHandler>();
+builder.Services.AddHostedService<TelemetryAdapterIngestionWorker>();
 builder.Services.AddMemoryCache();
 builder.Services.AddAlphaServiceClients(
     builder.Configuration,

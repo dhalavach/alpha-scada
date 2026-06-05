@@ -1,6 +1,5 @@
 using System.Net.Http.Json;
 using Alpha.Scada.Contracts;
-using Alpha.Scada.Contracts.Messaging;
 using Alpha.Scada.ServiceDefaults;
 using Alpha.Scada.Telemetry.Application.Messaging;
 using Microsoft.Extensions.Caching.Memory;
@@ -11,23 +10,16 @@ public sealed class CatalogCache(IHttpClientFactory httpClientFactory, IMemoryCa
 {
     private static readonly TimeSpan CacheDuration = TimeSpan.FromMinutes(1);
 
-    public async Task<ResolvedTelemetryBatch?> ResolveAsync(
-        TelemetryTopic topic,
-        TelemetryEnvelopeV1 envelope,
-        CancellationToken cancellationToken)
+    public async Task<ResolvedTelemetryBatch?> ResolveAsync(CanonicalTelemetry telemetry, CancellationToken cancellationToken)
     {
-        if (!string.Equals(envelope.UnitKey, topic.UnitKey, StringComparison.Ordinal))
-        {
-            return null;
-        }
-
-        var tenant = await ResolveTenantAsync(topic.TenantKey, cancellationToken);
-        var unit = await ResolveUnitAsync(tenant.Id, topic.SiteKey, topic.UnitKey, cancellationToken);
-        var tagKeys = envelope.Samples.Select(sample => sample.TagKey).Distinct().ToArray();
+        var tenant = await ResolveTenantAsync(telemetry.TenantKey, cancellationToken);
+        var unit = await ResolveUnitAsync(tenant.Id, telemetry.SiteKey, telemetry.UnitKey, cancellationToken);
+        var tagKeys = telemetry.Readings.Select(sample => sample.TagKey).Distinct().ToArray();
         var tags = await ResolveTagsAsync(tenant.Id, unit.UnitId, tagKeys, cancellationToken);
         var tagsByKey = tags.ToDictionary(tag => tag.Key);
 
-        var samples = envelope.Samples
+        // TODO: Unknown tags are currently dropped. Follow-up: quarantine or auto-provision them.
+        var samples = telemetry.Readings
             .Where(sample => tagsByKey.ContainsKey(sample.TagKey))
             .Select(sample =>
             {
@@ -52,9 +44,9 @@ public sealed class CatalogCache(IHttpClientFactory httpClientFactory, IMemoryCa
                 tenant.Id,
                 unit.SiteId,
                 unit.UnitId,
-                topic.TenantKey,
-                topic.SiteKey,
-                topic.UnitKey,
+                telemetry.TenantKey,
+                telemetry.SiteKey,
+                telemetry.UnitKey,
                 unit.UnitName,
                 samples);
     }

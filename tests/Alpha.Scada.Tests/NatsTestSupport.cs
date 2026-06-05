@@ -1,7 +1,6 @@
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Configurations;
 using DotNet.Testcontainers.Containers;
-using Alpha.Scada.Contracts.Messaging;
 using Alpha.Scada.ServiceDefaults.Messaging;
 using NATS.Client.Core;
 using NATS.Client.JetStream;
@@ -54,11 +53,7 @@ internal static class NatsTestSupport
         });
         var headers = new NatsHeaders
         {
-            [RawTelemetryHeaders.NatsMessageId] = messageId,
-            [RawTelemetryHeaders.WolverineMessageId] = messageId,
-            [RawTelemetryHeaders.WolverineMessageType] = typeof(TelemetryEnvelopeV1).FullName!,
-            [RawTelemetryHeaders.WolverineContentType] = "application/json",
-            [RawTelemetryHeaders.Subject] = subject
+            [RawTelemetryHeaders.NatsMessageId] = messageId
         };
         var jetStream = new NatsJSContextFactory().CreateContext(connection);
         await jetStream.PublishAsync(subject, payload, headers: headers, cancellationToken: cancellationToken);

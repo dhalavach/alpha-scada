@@ -1,7 +1,6 @@
 using System.Security.Cryptography;
 using System.Text.Json;
 using Alpha.Scada.Contracts;
-using Alpha.Scada.Contracts.Messaging;
 using Alpha.Scada.ServiceDefaults.Messaging;
 using NATS.Client.Core;
 using NATS.Client.JetStream;
@@ -39,11 +38,7 @@ public sealed class ChpUnitSimulatorWorker(
                 var messageId = DeterministicMessageId(subject, payload);
                 var headers = new NatsHeaders
                 {
-                    [RawTelemetryHeaders.NatsMessageId] = messageId,
-                    [RawTelemetryHeaders.WolverineMessageId] = messageId,
-                    [RawTelemetryHeaders.WolverineMessageType] = typeof(TelemetryEnvelopeV1).FullName!,
-                    [RawTelemetryHeaders.WolverineContentType] = "application/json",
-                    [RawTelemetryHeaders.Subject] = subject
+                    [RawTelemetryHeaders.NatsMessageId] = messageId
                 };
 
                 await jetStream.PublishAsync(subject, payload, headers: headers, cancellationToken: stoppingToken);

@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Sockets;
+using System.Text;
 using System.Text.Json;
 using Alpha.Scada.Contracts;
 using Alpha.Scada.Contracts.Messaging;
@@ -99,6 +100,24 @@ public sealed class TelemetryPrimaryIngestionTests
 
                 Assert.Equal(1, await CountRowsAsync(connectionString, "telemetry_samples"));
                 Assert.Equal(1, await CountRowsAsync(connectionString, "tag_current"));
+
+                var deadLetterSubject = Topics.Dlq("telemetry", subject);
+                var malformedDeadLetter = NatsTestSupport.WaitForSubjectAsync(natsUrl, deadLetterSubject, TimeSpan.FromSeconds(10));
+                await NatsTestSupport.PublishAsync(natsUrl, subject, Encoding.UTF8.GetBytes("{"), Guid.NewGuid().ToString("D"));
+                Assert.Equal(deadLetterSubject, await malformedDeadLetter);
+                Assert.Equal(1, await CountRowsAsync(connectionString, "telemetry_samples"));
+
+                var unsupportedSchemaPayload = JsonSerializer.SerializeToUtf8Bytes(
+                    new TelemetryEnvelopeV1(
+                        "2.0",
+                        "chp-demo-001",
+                        DateTimeOffset.UtcNow,
+                        []),
+                    new JsonSerializerOptions(JsonSerializerDefaults.Web));
+                var unsupportedSchemaDeadLetter = NatsTestSupport.WaitForSubjectAsync(natsUrl, deadLetterSubject, TimeSpan.FromSeconds(10));
+                await NatsTestSupport.PublishAsync(natsUrl, subject, unsupportedSchemaPayload, Guid.NewGuid().ToString("D"));
+                Assert.Equal(deadLetterSubject, await unsupportedSchemaDeadLetter);
+                Assert.Equal(1, await CountRowsAsync(connectionString, "telemetry_samples"));
 
                 await host.Services.GetRequiredService<TelemetryRepository>().IngestAsync(
                     new TelemetryIngestRequest(
@@ -205,7 +224,10 @@ public sealed class TelemetryPrimaryIngestionTests
                 services.AddSingleton<TelemetryMigrator>();
                 services.AddSingleton<TelemetryRepository>();
                 services.AddSingleton<CatalogCache>();
-                services.AddSingleton<TelemetryEnvelopeV1Handler>();
+                services.AddSingleton<ITelemetryAdapter, NatsJsonTelemetryAdapter>();
+                services.AddSingleton<TelemetryAdapterResolver>();
+                services.AddSingleton<CanonicalTelemetryHandler>();
+                services.AddHostedService<TelemetryAdapterIngestionWorker>();
                 services.AddMemoryCache();
                 services.AddAlphaServiceClients(
                     context.Configuration,
@@ -215,7 +237,7 @@ public sealed class TelemetryPrimaryIngestionTests
             })
             .UseAlphaMessaging("telemetry-primary-test", options =>
             {
-                options.Discovery.IncludeAssembly(typeof(TelemetryEnvelopeV1Handler).Assembly);
+                options.Discovery.IncludeAssembly(typeof(CanonicalTelemetryHandler).Assembly);
                 Alpha.Scada.Telemetry.MessagingTopology.Configure(options);
             })
             .Build();

@@ -1,3 +1,5 @@
+using System.Text;
+using System.Text.Json;
 using Alpha.Scada.Alarm.Domain;
 using Alpha.Scada.Contracts;
 using Alpha.Scada.Contracts.Messaging;
@@ -49,6 +51,9 @@ public sealed class DomainRuleTests
     [InlineData("alpha.demo.site.unit.telemetry.extra")]
     [InlineData("alpha/demo/site/unit/telemetry")]
     [InlineData("alpha.demo.site.unit/with-slash.telemetry")]
+    [InlineData("alpha.de.mo.site.unit.telemetry")]
+    [InlineData("alpha.demo.si.te.unit.telemetry")]
+    [InlineData("alpha.demo.site.un.it.telemetry")]
     [InlineData("alpha.demo.site.extra.segment.telemetry")]
     public void Telemetry_topic_parser_rejects_invalid_topics(string topic)
     {
@@ -70,6 +75,64 @@ public sealed class DomainRuleTests
         Assert.Equal(
             "alpha.demo-operator.demo-energy-site.chp-demo-001.telemetry",
             Topics.Telemetry("demo-operator", "demo-energy-site", "chp-demo-001"));
+    }
+
+    [Fact]
+    public void Nats_json_telemetry_adapter_normalizes_header_free_payload()
+    {
+        var adapter = new NatsJsonTelemetryAdapter();
+        var timestamp = DateTimeOffset.UtcNow;
+        var payload = JsonSerializer.SerializeToUtf8Bytes(
+            new TelemetryEnvelopeV1(
+                TelemetryEnvelopeV1.SchemaVersion,
+                "chp-demo-001",
+                timestamp,
+                [new("engine.electrical_output_kw", 61.2, "good", timestamp)]),
+            new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+        var telemetry = adapter.Normalize(
+            payload,
+            new TelemetrySource(
+                Topics.Telemetry("demo-operator", "demo-energy-site", "chp-demo-001"),
+                new Dictionary<string, string?>()));
+
+        Assert.Equal("demo-operator", telemetry.TenantKey);
+        Assert.Equal("demo-energy-site", telemetry.SiteKey);
+        Assert.Equal("chp-demo-001", telemetry.UnitKey);
+        var reading = Assert.Single(telemetry.Readings);
+        Assert.Equal("engine.electrical_output_kw", reading.TagKey);
+        Assert.Equal(61.2, reading.Value);
+        Assert.Equal("good", reading.Quality);
+    }
+
+    [Fact]
+    public void Nats_json_telemetry_adapter_rejects_unsupported_schema()
+    {
+        var adapter = new NatsJsonTelemetryAdapter();
+        var timestamp = DateTimeOffset.UtcNow;
+        var payload = JsonSerializer.SerializeToUtf8Bytes(
+            new TelemetryEnvelopeV1("2.0", "chp-demo-001", timestamp, []),
+            new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+        Assert.Throws<InvalidTelemetryEnvelopeException>(() =>
+            adapter.Normalize(
+                payload,
+                new TelemetrySource(
+                    Topics.Telemetry("demo-operator", "demo-energy-site", "chp-demo-001"),
+                    new Dictionary<string, string?>())));
+    }
+
+    [Fact]
+    public void Nats_json_telemetry_adapter_surfaces_malformed_json()
+    {
+        var adapter = new NatsJsonTelemetryAdapter();
+
+        Assert.Throws<JsonException>(() =>
+            adapter.Normalize(
+                Encoding.UTF8.GetBytes("{"),
+                new TelemetrySource(
+                    Topics.Telemetry("demo-operator", "demo-energy-site", "chp-demo-001"),
+                    new Dictionary<string, string?>())));
     }
 
     [Theory]
