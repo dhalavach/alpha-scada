@@ -10,7 +10,16 @@ public sealed class TelemetryBroadcastHandler(IHubContext<TelemetryHub> hub)
         hub.Clients.Group(TelemetryHub.TenantGroup(message.TenantId))
             .SendAsync("telemetryUpdated", new
             {
-                message.TenantId,
-                message.UnitId
+                tenantId = message.TenantId,
+                unitId = message.UnitId,
+                storedAtUtc = message.StoredAtUtc,
+                samples = message.Samples.Select(sample => new
+                {
+                    tagId = sample.TagId,
+                    tagKey = sample.TagKey,
+                    value = sample.Value,
+                    quality = sample.Quality,
+                    timestampUtc = sample.SourceTimestampUtc
+                }).ToArray()
             }, cancellationToken);
 }

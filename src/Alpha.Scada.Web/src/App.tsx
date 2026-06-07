@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiBase, authHeaders, getJson, tokenKey } from "./api/client";
-import type { Alarm, HistoryPoint, LoginResponse, Report, ScreenName, Site, SystemProbe, Tag, Tenant, Unit, User } from "./api/types";
+import type { Alarm, HistoryPoint, LoginResponse, Report, ScreenName, Site, SystemProbe, Tag, TelemetryUpdate, Tenant, Unit, User } from "./api/types";
 import StatPill from "./components/StatPill";
 import StatusBadge from "./components/StatusBadge";
 import useSignalR from "./hooks/useSignalR";
@@ -64,9 +64,8 @@ export default function App() {
 
   useSignalR({
     token,
-    selectedUnitId,
     setStatus,
-    loadUnit,
+    applyTelemetryUpdate,
     loadAlarms,
     loadSitesAndUnits,
     onReportCompleted
@@ -152,6 +151,29 @@ export default function App() {
     setSelectedTrendTagId(current => current && nextTags.some(tag => tag.tagId === current)
       ? current
       : nextTags[0]?.tagId ?? "");
+  }
+
+  function applyTelemetryUpdate(update: TelemetryUpdate) {
+    if (update.unitId !== selectedUnitId || update.samples.length === 0) return;
+
+    setTags(currentTags => {
+      const samplesByTag = new Map(update.samples.map(sample => [sample.tagId, sample]));
+      let hasChanges = false;
+      const nextTags = currentTags.map(tag => {
+        const sample = samplesByTag.get(tag.tagId);
+        if (!sample) return tag;
+
+        hasChanges = true;
+        return {
+          ...tag,
+          value: sample.value,
+          quality: sample.quality,
+          timestampUtc: sample.timestampUtc
+        };
+      });
+
+      return hasChanges ? nextTags : currentTags;
+    });
   }
 
   async function loadAlarms() {
