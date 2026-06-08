@@ -114,10 +114,23 @@ public sealed class AssetRepository
         CancellationToken cancellationToken)
     {
         await using var command = new NpgsqlCommand("""
-            update units
-            set status = 'online', last_seen_utc = now()
-            where id = @unit_id
-            returning id, tenant_id, site_id, key, name, model, status, last_seen_utc
+            with current_unit as (
+                select id, status
+                from units
+                where id = @unit_id
+                for update
+            ),
+            updated as (
+                update units u
+                set status = 'online',
+                    last_seen_utc = now()
+                from current_unit c
+                where u.id = c.id
+                returning u.id, u.tenant_id, u.site_id, u.key, u.name, u.model, u.status, u.last_seen_utc, c.status as previous_status
+            )
+            select id, tenant_id, site_id, key, name, model, status, last_seen_utc
+            from updated
+            where previous_status <> 'online'
             """, connection, transaction);
         command.Parameters.AddWithValue("unit_id", unitId);
         return (await ReadUnitsAsync(command, cancellationToken)).FirstOrDefault();

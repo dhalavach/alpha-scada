@@ -82,8 +82,73 @@ public sealed class AssetRepositoryBehaviorTests
         });
     }
 
+    [Fact]
+    public async Task Set_unit_online_updates_last_seen_without_returning_transition_when_already_online()
+    {
+        await WithPostgresAsync(async connectionString =>
+        {
+            await using var dataSource = NpgsqlDataSource.Create(connectionString);
+            await new AssetMigrator(dataSource, NullLogger<AssetMigrator>.Instance).MigrateAsync(CancellationToken.None);
+            var repository = new AssetRepository(dataSource);
+            await SetUnitStateAsync(connectionString, UnitId, "online", DateTimeOffset.UtcNow.AddMinutes(-10));
+            var before = await LastSeenAsync(connectionString, UnitId);
+
+            var changed = await repository.SetUnitOnlineAsync(UnitId, CancellationToken.None);
+            var after = await LastSeenAsync(connectionString, UnitId);
+
+            Assert.Null(changed);
+            Assert.True(after > before);
+        });
+    }
+
+    [Fact]
+    public async Task Set_unit_online_returns_transition_when_unit_was_offline()
+    {
+        await WithPostgresAsync(async connectionString =>
+        {
+            await using var dataSource = NpgsqlDataSource.Create(connectionString);
+            await new AssetMigrator(dataSource, NullLogger<AssetMigrator>.Instance).MigrateAsync(CancellationToken.None);
+            var repository = new AssetRepository(dataSource);
+            await SetUnitStateAsync(connectionString, UnitId, "offline", DateTimeOffset.UtcNow.AddMinutes(-10));
+
+            var changed = await repository.SetUnitOnlineAsync(UnitId, CancellationToken.None);
+
+            Assert.NotNull(changed);
+            Assert.Equal("online", changed.Status);
+            Assert.Equal(UnitId, changed.Id);
+        });
+    }
+
     private static CurrentUserDto User(Guid tenantId, string role) =>
         new(Guid.NewGuid(), tenantId, "user@example.test", "User", role);
+
+    private static async Task SetUnitStateAsync(string connectionString, Guid unitId, string status, DateTimeOffset lastSeenUtc)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand("""
+            update units
+            set status = @status,
+                last_seen_utc = @last_seen_utc
+            where id = @unit_id
+            """, connection);
+        command.Parameters.AddWithValue("status", status);
+        command.Parameters.AddWithValue("last_seen_utc", lastSeenUtc);
+        command.Parameters.AddWithValue("unit_id", unitId);
+        await command.ExecuteNonQueryAsync();
+    }
+
+    private static async Task<DateTimeOffset> LastSeenAsync(string connectionString, Guid unitId)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand("select last_seen_utc from units where id = @unit_id", connection);
+        command.Parameters.AddWithValue("unit_id", unitId);
+        await using var reader = await command.ExecuteReaderAsync();
+        return await reader.ReadAsync()
+            ? reader.GetFieldValue<DateTimeOffset>(0)
+            : DateTimeOffset.MinValue;
+    }
 
     private static async Task MakeUnitStaleAsync(string connectionString, Guid unitId)
     {
