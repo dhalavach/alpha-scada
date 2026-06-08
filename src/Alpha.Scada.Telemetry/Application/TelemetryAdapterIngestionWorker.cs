@@ -15,6 +15,8 @@ public sealed class TelemetryAdapterIngestionWorker(
     TelemetryAdapterResolver adapters,
     CanonicalTelemetryHandler handler,
     IMessageBus bus,
+    TelemetryIngestionOptions ingestionOptions,
+    TelemetryIngestionMetrics metrics,
     ILogger<TelemetryAdapterIngestionWorker> logger) : BackgroundService
 {
     private const string DurableName = "telemetry-edge-json";
@@ -25,13 +27,19 @@ public sealed class TelemetryAdapterIngestionWorker(
         await using var connection = new NatsConnection(BuildNatsOptions());
         var jetStream = new NatsJSContextFactory().CreateContext(connection);
         var consumer = await CreateConsumerWhenReadyAsync(jetStream, stoppingToken);
+        var degreeOfParallelism = ingestionOptions.EffectiveMaxDegreeOfParallelism;
 
-        logger.LogInformation("Telemetry adapter listening to {Subject} on {Stream}.", Topics.TelemetryWildcard, Topics.EdgeStream);
-        await foreach (var message in consumer.ConsumeAsync<byte[]>(cancellationToken: stoppingToken)
-                           .WithCancellation(stoppingToken))
-        {
-            await ProcessAsync(connection, message, stoppingToken);
-        }
+        logger.LogInformation(
+            "Telemetry adapter listening to {Subject} on {Stream} with max degree of parallelism {MaxDegreeOfParallelism}.",
+            Topics.TelemetryWildcard,
+            Topics.EdgeStream,
+            degreeOfParallelism);
+        await TelemetryParallelPump.RunSafelyAsync(
+            consumer.ConsumeAsync<byte[]>(cancellationToken: stoppingToken),
+            degreeOfParallelism,
+            async (message, ct) => await ProcessOneMeasuredAsync(connection, message, ct),
+            ex => logger.LogError(ex, "Telemetry adapter message processing escaped its guarded path."),
+            stoppingToken);
     }
 
     private async Task<INatsJSConsumer> CreateConsumerWhenReadyAsync(INatsJSContext jetStream, CancellationToken cancellationToken)
@@ -63,16 +71,37 @@ public sealed class TelemetryAdapterIngestionWorker(
         }
     }
 
-    private async Task ProcessAsync(
+    private async ValueTask ProcessOneMeasuredAsync(
         NatsConnection connection,
         INatsJSMsg<byte[]> message,
         CancellationToken cancellationToken)
     {
-        message.EnsureSuccess();
+        var measurement = metrics.Begin();
+        try
+        {
+            measurement.Complete(await ProcessAsync(connection, message, cancellationToken));
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            measurement.Complete(TelemetryIngestionOutcome.EscapedError);
+            throw;
+        }
+    }
+
+    private async Task<TelemetryIngestionOutcome> ProcessAsync(
+        NatsConnection connection,
+        INatsJSMsg<byte[]> message,
+        CancellationToken cancellationToken)
+    {
         var headers = ReadHeaders(message);
         var messageId = ResolveMessageId(message.Subject, message.Data, headers);
         try
         {
+            message.EnsureSuccess();
             var telemetry = adapters.Normalize(message.Data, new TelemetrySource(message.Subject, headers));
             var stored = await handler.Handle(telemetry, cancellationToken);
             if (stored is not null)
@@ -85,15 +114,15 @@ public sealed class TelemetryAdapterIngestionWorker(
                     }.WithHeader(RawTelemetryHeaders.NatsMessageId, messageId));
             }
 
-            await message.AckAsync(cancellationToken: cancellationToken);
+            return await AckAsync(message, stored is null ? TelemetryIngestionOutcome.Dropped : TelemetryIngestionOutcome.Success, cancellationToken);
         }
         catch (JsonException ex)
         {
-            await DeadLetterAsync(connection, message, messageId, ex, cancellationToken);
+            return await DeadLetterAsync(connection, message, messageId, ex, cancellationToken);
         }
         catch (InvalidTelemetryEnvelopeException ex)
         {
-            await DeadLetterAsync(connection, message, messageId, ex, cancellationToken);
+            return await DeadLetterAsync(connection, message, messageId, ex, cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -102,16 +131,57 @@ public sealed class TelemetryAdapterIngestionWorker(
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Telemetry adapter failed to process {Subject}. Requesting redelivery.", message.Subject);
+            return await NakAsync(message, cancellationToken);
+        }
+    }
+
+    private async Task<TelemetryIngestionOutcome> AckAsync(
+        INatsJSMsg<byte[]> message,
+        TelemetryIngestionOutcome successOutcome,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await message.AckAsync(cancellationToken: cancellationToken);
+            return successOutcome;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Telemetry adapter could not ack {Subject}; JetStream will redeliver after AckWait.", message.Subject);
+            return TelemetryIngestionOutcome.TerminalError;
+        }
+    }
+
+    private async Task<TelemetryIngestionOutcome> NakAsync(
+        INatsJSMsg<byte[]> message,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
             await message.NakAsync(
                 new AckOpts
                 {
                     NakDelay = TimeSpan.FromSeconds(1)
                 },
                 cancellationToken);
+            return TelemetryIngestionOutcome.Retry;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Telemetry adapter could not request redelivery for {Subject}; JetStream will redeliver after AckWait.", message.Subject);
+            return TelemetryIngestionOutcome.TerminalError;
         }
     }
 
-    private async Task DeadLetterAsync(
+    private async Task<TelemetryIngestionOutcome> DeadLetterAsync(
         NatsConnection connection,
         INatsJSMsg<byte[]> message,
         string messageId,
@@ -122,13 +192,26 @@ public sealed class TelemetryAdapterIngestionWorker(
         var payload = JsonSerializer.SerializeToUtf8Bytes(
             new DeadLetteredTelemetry(message.Subject, messageId, exception.GetType().Name, exception.Message, DateTimeOffset.UtcNow),
             JsonOptions);
-        await connection.PublishAsync(Topics.Dlq("telemetry", message.Subject), payload, cancellationToken: cancellationToken);
-        await message.AckTerminateAsync(
-            new AckOpts
-            {
-                TerminateReason = exception.Message
-            },
-            cancellationToken);
+        try
+        {
+            await connection.PublishAsync(Topics.Dlq("telemetry", message.Subject), payload, cancellationToken: cancellationToken);
+            await message.AckTerminateAsync(
+                new AckOpts
+                {
+                    TerminateReason = exception.Message
+                },
+                cancellationToken);
+            return TelemetryIngestionOutcome.DeadLetter;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Telemetry adapter could not complete dead-letter handling for {Subject}; JetStream will redeliver after AckWait.", message.Subject);
+            return TelemetryIngestionOutcome.TerminalError;
+        }
     }
 
     private NatsOpts BuildNatsOptions()

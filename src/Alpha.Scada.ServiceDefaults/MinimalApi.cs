@@ -13,7 +13,11 @@ public static class MinimalApi
         return Results.Ok(new { status = "ready" });
     }
 
-    public static async Task<IResult> MetricsAsync(string serviceName, NpgsqlDataSource dataSource, CancellationToken cancellationToken)
+    public static async Task<IResult> MetricsAsync(
+        string serviceName,
+        NpgsqlDataSource dataSource,
+        CancellationToken cancellationToken,
+        IEnumerable<IAlphaMetricsProvider>? metricProviders = null)
     {
         var metricName = serviceName.Replace("-", "_");
         var serviceLabel = EscapeLabel(serviceName);
@@ -33,6 +37,10 @@ public static class MinimalApi
         metrics.AppendLine("# HELP alpha_scada_telemetry_samples_written_total Approximate persisted telemetry samples visible to this service database");
         metrics.AppendLine("# TYPE alpha_scada_telemetry_samples_written_total gauge");
         metrics.AppendLine(CultureInfo.InvariantCulture, $"alpha_scada_telemetry_samples_written_total{{service=\"{serviceLabel}\"}} {telemetrySamples}");
+        foreach (var provider in metricProviders ?? [])
+        {
+            provider.AppendMetrics(metrics, serviceName);
+        }
 
         return Results.Text(metrics.ToString(), "text/plain; version=0.0.4; charset=utf-8");
     }

@@ -17,6 +17,9 @@ builder.Services.AddSingleton<CatalogCache>();
 builder.Services.AddSingleton<ITelemetryAdapter, NatsJsonTelemetryAdapter>();
 builder.Services.AddSingleton<TelemetryAdapterResolver>();
 builder.Services.AddSingleton<CanonicalTelemetryHandler>();
+builder.Services.AddSingleton(sp => TelemetryIngestionOptions.FromConfiguration(sp.GetRequiredService<IConfiguration>()));
+builder.Services.AddSingleton<TelemetryIngestionMetrics>();
+builder.Services.AddSingleton<Alpha.Scada.ServiceDefaults.IAlphaMetricsProvider>(sp => sp.GetRequiredService<TelemetryIngestionMetrics>());
 builder.Services.AddHostedService<TelemetryAdapterIngestionWorker>();
 builder.Services.AddMemoryCache();
 builder.Services.AddAlphaServiceClients(

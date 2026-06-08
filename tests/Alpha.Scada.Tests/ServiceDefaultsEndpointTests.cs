@@ -52,6 +52,7 @@ public sealed class ServiceDefaultsEndpointTests
             var builder = WebApplication.CreateBuilder();
             builder.WebHost.UseTestServer();
             builder.Services.AddSingleton(dataSource);
+            builder.Services.AddSingleton<IAlphaMetricsProvider>(new ProbeMetricsProvider());
 
             var app = builder.Build();
             app.MapAlphaOperationalEndpoints("alpha-test-service");
@@ -66,6 +67,7 @@ public sealed class ServiceDefaultsEndpointTests
             Assert.Equal(System.Net.HttpStatusCode.OK, ready.StatusCode);
             Assert.Contains("alpha_scada_service_up", metrics);
             Assert.Contains("alpha_scada_wolverine_error_queue_depth", metrics);
+            Assert.Contains("alpha_probe_metric", metrics);
         });
     }
 
@@ -253,4 +255,13 @@ public sealed class ServiceDefaultsEndpointTests
         }
     }
 
+    private sealed class ProbeMetricsProvider : IAlphaMetricsProvider
+    {
+        public void AppendMetrics(System.Text.StringBuilder metrics, string serviceName)
+        {
+            metrics.AppendLine("# HELP alpha_probe_metric Probe metric");
+            metrics.AppendLine("# TYPE alpha_probe_metric gauge");
+            metrics.AppendLine("alpha_probe_metric 1");
+        }
+    }
 }

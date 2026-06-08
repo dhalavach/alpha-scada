@@ -163,6 +163,12 @@ export default function App() {
         const sample = samplesByTag.get(tag.tagId);
         if (!sample) return tag;
 
+        const currentTimestamp = Date.parse(tag.timestampUtc);
+        const sampleTimestamp = Date.parse(sample.timestampUtc);
+        if (!Number.isNaN(currentTimestamp) && !Number.isNaN(sampleTimestamp) && sampleTimestamp < currentTimestamp) {
+          return tag;
+        }
+
         hasChanges = true;
         return {
           ...tag,

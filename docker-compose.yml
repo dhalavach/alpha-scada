@@ -130,7 +130,7 @@ services:
         DLL: Alpha.Scada.Telemetry.dll
     environment:
       ASPNETCORE_URLS: http://+:8080
-      ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=alpha_telemetry;Username=alpha;Password=alpha
+      ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=alpha_telemetry;Username=alpha;Password=alpha;Maximum Pool Size=100
       Jwt__Secret: ${JWT_SECRET:?JWT_SECRET must be set in .env}
       Nats__Url: nats://nats:4222
       Nats__User: ${NATS_USER_SERVICES:?NATS_USER_SERVICES must be set in .env}
@@ -138,6 +138,7 @@ services:
       Services__Tenant: http://tenant:8080
       Services__Asset: http://asset:8080
       Services__TagCatalog: http://tag-catalog:8080
+      Telemetry__Ingestion__MaxDegreeOfParallelism: "8"
       Timescale__RetentionDays: "365"
     networks:
       - alpha-internal

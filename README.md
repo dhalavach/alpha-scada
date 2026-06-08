@@ -114,6 +114,7 @@ http://localhost:3000
 ## Important Notes
 
 - Local Compose uses one TimescaleDB/PostgreSQL container with separate service databases. It is not production HA.
+- Telemetry ingestion is bounded by `Telemetry:Ingestion:MaxDegreeOfParallelism` (`8` in local Compose). Keep this around one-third or less of the telemetry PostgreSQL connection pool until measured; Compose sets the telemetry pool to `100` for comfortable local headroom.
 - Service migrators currently run at application startup.
 - NATS development credentials in `ops/nats/nats-server.conf` and k3s manifests are placeholders and must be replaced for a real deployment.
 - Sparkplug B is not implemented yet. NATS reserves `spBv1.0.>` as an ingress-ready subject, and the task plan is documented in [docs/tasks/sparkplug-b-integration.md](docs/tasks/sparkplug-b-integration.md).

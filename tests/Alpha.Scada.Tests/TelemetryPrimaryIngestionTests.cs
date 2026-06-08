@@ -205,6 +205,49 @@ public sealed class TelemetryPrimaryIngestionTests
         }
     }
 
+    [Fact]
+    public async Task Telemetry_repository_keeps_newest_current_value_when_samples_arrive_out_of_order()
+    {
+        var postgres = new ContainerBuilder()
+            .WithImage(TestImages.Postgres)
+            .WithEnvironment("POSTGRES_DB", "alpha_test")
+            .WithEnvironment("POSTGRES_USER", "alpha")
+            .WithEnvironment("POSTGRES_PASSWORD", "alpha-pass")
+            .WithPortBinding(5432, true)
+            .WithWaitStrategy(Wait.ForUnixContainer().UntilInternalTcpPortIsAvailable(5432))
+            .Build();
+
+        try
+        {
+            await postgres.StartAsync();
+        }
+        catch (DockerUnavailableException ex)
+        {
+            await postgres.DisposeAsync();
+            throw SkipException.ForSkip($"Docker is not available for telemetry ordering integration test: {ex.Message}");
+        }
+
+        await using (postgres)
+        {
+            var connectionString =
+                $"Host={postgres.Hostname};Port={postgres.GetMappedPublicPort(5432)};Database=alpha_test;Username=alpha;Password=alpha-pass";
+            await WaitForPostgresAsync(connectionString);
+
+            await using var dataSource = NpgsqlDataSource.Create(connectionString);
+            await new TelemetryMigrator(dataSource, NullLogger<TelemetryMigrator>.Instance).MigrateAsync(CancellationToken.None);
+            var repository = new TelemetryRepository(dataSource);
+            var older = DateTimeOffset.UtcNow.AddSeconds(-1);
+            var newer = DateTimeOffset.UtcNow;
+
+            await repository.IngestAsync(IngestRequest(newer, 70), CancellationToken.None);
+            await repository.IngestAsync(IngestRequest(older, 55), CancellationToken.None);
+
+            Assert.Equal(2, await CountRowsAsync(connectionString, "telemetry_samples"));
+            Assert.Equal(1, await CountRowsAsync(connectionString, "tag_current"));
+            Assert.Equal(70, await CurrentValueAsync(connectionString));
+        }
+    }
+
     private static IHost BuildTelemetryHost(string connectionString, string natsUrl, string catalogBaseAddress)
     {
         var settings = new Dictionary<string, string?>
@@ -213,7 +256,8 @@ public sealed class TelemetryPrimaryIngestionTests
             ["Nats:Url"] = natsUrl,
             ["Services:Tenant"] = catalogBaseAddress,
             ["Services:Asset"] = catalogBaseAddress,
-            ["Services:TagCatalog"] = catalogBaseAddress
+            ["Services:TagCatalog"] = catalogBaseAddress,
+            ["Telemetry:Ingestion:MaxDegreeOfParallelism"] = "8"
         };
 
         return Host.CreateDefaultBuilder()
@@ -227,6 +271,9 @@ public sealed class TelemetryPrimaryIngestionTests
                 services.AddSingleton<ITelemetryAdapter, NatsJsonTelemetryAdapter>();
                 services.AddSingleton<TelemetryAdapterResolver>();
                 services.AddSingleton<CanonicalTelemetryHandler>();
+                services.AddSingleton(sp => TelemetryIngestionOptions.FromConfiguration(sp.GetRequiredService<IConfiguration>()));
+                services.AddSingleton<TelemetryIngestionMetrics>();
+                services.AddSingleton<IAlphaMetricsProvider>(sp => sp.GetRequiredService<TelemetryIngestionMetrics>());
                 services.AddHostedService<TelemetryAdapterIngestionWorker>();
                 services.AddMemoryCache();
                 services.AddAlphaServiceClients(
@@ -243,7 +290,7 @@ public sealed class TelemetryPrimaryIngestionTests
             .Build();
     }
 
-    private static TelemetryIngestRequest IngestRequest(DateTimeOffset timestamp) =>
+    private static TelemetryIngestRequest IngestRequest(DateTimeOffset timestamp, double value = 61.2) =>
         new(
             TenantId,
             UnitId,
@@ -256,10 +303,19 @@ public sealed class TelemetryPrimaryIngestionTests
                     "kW",
                     45,
                     70,
-                    61.2,
+                    value,
                     "good",
                     timestamp)
             ]);
+
+    private static async Task<double> CurrentValueAsync(string connectionString)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand("select value_double from tag_current where tag_id = @tag_id", connection);
+        command.Parameters.AddWithValue("tag_id", TagId);
+        return Convert.ToDouble(await command.ExecuteScalarAsync());
+    }
 
     private static async Task WaitForPostgresAsync(string connectionString)
     {

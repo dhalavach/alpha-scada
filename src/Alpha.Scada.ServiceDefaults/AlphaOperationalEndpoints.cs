@@ -12,8 +12,8 @@ public static class AlphaOperationalEndpoints
         app.MapGet("/health", () => Results.Ok(new { status = "ok", service = serviceName, utc = DateTimeOffset.UtcNow }));
         app.MapGet("/ready", (NpgsqlDataSource dataSource, CancellationToken cancellationToken) =>
             MinimalApi.ReadyAsync(dataSource, cancellationToken));
-        app.MapGet("/metrics", (NpgsqlDataSource dataSource, CancellationToken cancellationToken) =>
-            MinimalApi.MetricsAsync(serviceName, dataSource, cancellationToken));
+        app.MapGet("/metrics", (NpgsqlDataSource dataSource, IEnumerable<IAlphaMetricsProvider> metricProviders, CancellationToken cancellationToken) =>
+            MinimalApi.MetricsAsync(serviceName, dataSource, cancellationToken, metricProviders));
 
         return app;
     }
