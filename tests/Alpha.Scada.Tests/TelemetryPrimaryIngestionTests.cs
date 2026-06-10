@@ -17,6 +17,9 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
+using NATS.Client.Core;
+using NATS.Client.JetStream;
+using NATS.Client.JetStream.Models;
 using Npgsql;
 
 namespace Alpha.Scada.Tests;
@@ -128,6 +131,76 @@ public sealed class TelemetryPrimaryIngestionTests(PostgresContainerFixture post
     }
 
     [Fact]
+    public async Task Invalid_telemetry_payload_is_dead_lettered_durably_with_payload()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"alpha-telemetry-dlq-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var nats = await ContainerSupport.StartOrSkipAsync(
+                () => NatsTestSupport.StartAsync(tempDir),
+                "telemetry DLQ NATS integration test");
+            await using (nats)
+            await using (var catalog = await FakeCatalogServer.StartAsync())
+            {
+                var connectionString = await postgres.CreateDatabaseAsync(nameof(TelemetryPrimaryIngestionTests));
+                await WaitForPostgresAsync(connectionString);
+
+                var natsUrl = NatsTestSupport.Url(nats);
+                using var host = BuildTelemetryHost(
+                    connectionString,
+                    natsUrl,
+                    catalog.BaseAddress);
+
+                await host.Services.GetRequiredService<TelemetryMigrator>().MigrateAsync(CancellationToken.None);
+                await host.StartAsync();
+                await Task.Delay(250);
+
+                await using var connection = new NatsConnection(new NatsOpts { Url = natsUrl, RetryOnInitialConnect = true });
+                var jetStream = new NatsJSContextFactory().CreateContext(connection);
+                _ = await jetStream.GetStreamAsync(Topics.DlqStream);
+
+                var subject = Topics.Telemetry("demo-operator", "demo-energy-site", "chp-demo-001");
+                var payload = Encoding.UTF8.GetBytes("{");
+                var messageId = Guid.NewGuid().ToString("D");
+                await NatsTestSupport.PublishAsync(natsUrl, subject, payload, messageId);
+
+                var deadLetter = await FetchDeadLetterAsync(jetStream, TimeSpan.FromSeconds(10));
+
+                Assert.Equal(subject, deadLetter.Subject);
+                Assert.Equal(messageId, deadLetter.MessageId);
+                Assert.Equal(nameof(JsonException), deadLetter.ErrorType);
+                Assert.Equal(payload, Convert.FromBase64String(deadLetter.PayloadBase64));
+                Assert.False(deadLetter.PayloadTruncated);
+
+                await host.StopAsync();
+            }
+        }
+        finally
+        {
+            Directory.Delete(tempDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Dead_letter_payload_factory_caps_payload_at_64_kb()
+    {
+        var payload = Enumerable.Range(0, DeadLetteredTelemetryFactory.MaxPayloadBytes + 5)
+            .Select(value => (byte)(value % 256))
+            .ToArray();
+
+        var deadLetter = DeadLetteredTelemetryFactory.Create(
+            "alpha.demo.site.unit.telemetry",
+            "message-id",
+            new InvalidTelemetryEnvelopeException("bad"),
+            payload,
+            DateTimeOffset.UtcNow);
+
+        Assert.True(deadLetter.PayloadTruncated);
+        Assert.Equal(DeadLetteredTelemetryFactory.MaxPayloadBytes, Convert.FromBase64String(deadLetter.PayloadBase64).Length);
+    }
+
+    [Fact]
     public async Task Telemetry_repository_transaction_overload_rolls_back_and_commits_samples_with_current_state()
     {
         var connectionString = await postgres.CreateDatabaseAsync(nameof(TelemetryPrimaryIngestionTests));
@@ -184,6 +257,7 @@ public sealed class TelemetryPrimaryIngestionTests(PostgresContainerFixture post
         var settings = new Dictionary<string, string?>
         {
             ["ConnectionStrings:Postgres"] = connectionString,
+            ["Jwt:Secret"] = "test-secret-test-secret-test-secret-32",
             ["Nats:Url"] = natsUrl,
             ["Services:Tenant"] = catalogBaseAddress,
             ["Services:Asset"] = catalogBaseAddress,
@@ -288,6 +362,31 @@ public sealed class TelemetryPrimaryIngestionTests(PostgresContainerFixture post
         }
 
         Assert.Equal(expected, await CountRowsAsync(connectionString, tableName));
+    }
+
+    private static async Task<DeadLetteredTelemetry> FetchDeadLetterAsync(INatsJSContext jetStream, TimeSpan timeout)
+    {
+        var consumer = await jetStream.CreateConsumerAsync(
+            Topics.DlqStream,
+            new ConsumerConfig($"dlq-test-{Guid.NewGuid():N}")
+            {
+                FilterSubject = Topics.DlqWildcard,
+                InactiveThreshold = TimeSpan.FromMinutes(1)
+            });
+        using var cts = new CancellationTokenSource(timeout);
+        await foreach (var message in consumer.FetchAsync<byte[]>(
+                           new NatsJSFetchOpts { MaxMsgs = 1, Expires = timeout },
+                           cancellationToken: cts.Token))
+        {
+            message.EnsureSuccess();
+            var deadLetter = JsonSerializer.Deserialize<DeadLetteredTelemetry>(
+                message.Data,
+                new JsonSerializerOptions(JsonSerializerDefaults.Web));
+            await message.AckAsync(cancellationToken: cts.Token);
+            return deadLetter ?? throw new InvalidOperationException("DLQ message was empty.");
+        }
+
+        throw new TimeoutException("No telemetry DLQ message arrived.");
     }
 
     private sealed class FakeCatalogServer(WebApplication app) : IAsyncDisposable

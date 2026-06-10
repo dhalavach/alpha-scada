@@ -451,7 +451,7 @@ sequenceDiagram
 
 Key behavior:
 
-- malformed JSON and unsupported schema versions are ack-terminated and published to `alpha._dlq.telemetry.{originalSubject}`;
+- malformed JSON and unsupported schema versions are ack-terminated after a durable DLQ record is published to `alpha_dlq.telemetry.{originalSubject}`;
 - transient catalog/database failures are nacked so JetStream redelivers;
 - unknown tags are currently dropped by `CatalogCache`; if no known tags remain, the batch is rejected;
 - downstream alarms only see `TelemetryBatchStored`, so alarms reference data that Telemetry has persisted.

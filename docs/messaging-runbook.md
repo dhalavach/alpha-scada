@@ -37,6 +37,41 @@ Expected streams:
 - `ALPHA_EDGE`: raw edge ingress and Sparkplug-ready subjects.
 - `ALPHA_DOMAIN`: normalized telemetry, status, alarm, and report-completed events.
 - `ALPHA_JOBS`: report request work queue.
+- `ALPHA_DLQ`: durable telemetry dead letters under `alpha_dlq.>`.
+
+## Telemetry DLQ
+
+Malformed or unsupported telemetry envelopes are published to `ALPHA_DLQ` before the original edge message is terminated. The dead-letter JSON includes:
+
+- `subject`: original telemetry subject.
+- `messageId`: original `Nats-Msg-Id` or deterministic fallback id.
+- `errorType` / `errorMessage`: why ingestion rejected it.
+- `payloadBase64`: original payload, capped at 64 KB.
+- `payloadTruncated`: `true` when only the first 64 KB were retained.
+
+Inspect the stream:
+
+```bash
+docker compose exec -T nats nats --server nats://nats:4222 \
+  --user admin --password "$NATS_PASSWORD_ADMIN" stream view ALPHA_DLQ
+```
+
+Decode a payload:
+
+```bash
+printf '%s' '<payloadBase64>' | base64 -d
+```
+
+Replay after correcting catalog/schema issues:
+
+```bash
+printf '%s' '<payloadBase64>' | base64 -d >/tmp/replay-telemetry.json
+nats --server nats://localhost:4222 \
+  --user services --password "$NATS_PASSWORD_SERVICES" \
+  pub '<subject>' --header "Nats-Msg-Id: replay-$(uuidgen)" "$(cat /tmp/replay-telemetry.json)"
+```
+
+Use a fresh `Nats-Msg-Id` for replay. Reusing the original id can be deduplicated by JetStream.
 
 ## Wolverine Error Queue Is Non-Empty
 

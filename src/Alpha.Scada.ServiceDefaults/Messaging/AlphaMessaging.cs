@@ -118,6 +118,11 @@ public static class AlphaMessaging
             Topics.ReportCompleted);
 
         nats.DefineWorkQueueStream(Topics.JobsStream, Topics.ReportRequested);
+
+        nats.DefineLogStream(
+            Topics.DlqStream,
+            TimeSpan.FromDays(30),
+            Topics.DlqWildcard);
     }
 
     private static IConfiguration BuildFallbackConfiguration() =>

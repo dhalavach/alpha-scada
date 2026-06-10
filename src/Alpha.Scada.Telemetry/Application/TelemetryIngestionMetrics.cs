@@ -26,6 +26,7 @@ public sealed class TelemetryIngestionMetrics : IAlphaMetricsProvider
     private long retry;
     private long terminalError;
     private long escapedError;
+    private long maxDeliveriesExhausted;
     private long durationCount;
     private long durationTicksTotal;
 
@@ -49,6 +50,11 @@ public sealed class TelemetryIngestionMetrics : IAlphaMetricsProvider
         AppendOutcome(metrics, serviceLabel, "retry", ref retry);
         AppendOutcome(metrics, serviceLabel, "terminal_error", ref terminalError);
         AppendOutcome(metrics, serviceLabel, "escaped_error", ref escapedError);
+        metrics.AppendLine("# HELP alpha_scada_telemetry_ingestion_max_deliveries_exhausted_total Telemetry messages that exhausted JetStream redelivery attempts");
+        metrics.AppendLine("# TYPE alpha_scada_telemetry_ingestion_max_deliveries_exhausted_total counter");
+        metrics.AppendLine(
+            CultureInfo.InvariantCulture,
+            $"alpha_scada_telemetry_ingestion_max_deliveries_exhausted_total{{service=\"{serviceLabel}\"}} {Interlocked.Read(ref maxDeliveriesExhausted)}");
         metrics.AppendLine("# HELP alpha_scada_telemetry_ingestion_processing_seconds Telemetry ingestion processing duration");
         metrics.AppendLine("# TYPE alpha_scada_telemetry_ingestion_processing_seconds histogram");
 
@@ -68,6 +74,9 @@ public sealed class TelemetryIngestionMetrics : IAlphaMetricsProvider
             CultureInfo.InvariantCulture,
             $"alpha_scada_telemetry_ingestion_processing_seconds_sum{{service=\"{serviceLabel}\"}} {Interlocked.Read(ref durationTicksTotal) / (double)Stopwatch.Frequency}");
     }
+
+    public void RecordMaxDeliveriesExhausted() =>
+        Interlocked.Increment(ref maxDeliveriesExhausted);
 
     private void Complete(long startedTimestamp, TelemetryIngestionOutcome outcome)
     {

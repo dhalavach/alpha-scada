@@ -33,6 +33,7 @@ internal static class NatsTestSupport
             .Build();
 
         await nats.StartAsync();
+        await WaitForJetStreamAsync(Url(nats));
         return nats;
     }
 
@@ -57,6 +58,33 @@ internal static class NatsTestSupport
         };
         var jetStream = new NatsJSContextFactory().CreateContext(connection);
         await jetStream.PublishAsync(subject, payload, headers: headers, cancellationToken: cancellationToken);
+    }
+
+    private static async Task WaitForJetStreamAsync(string natsUrl)
+    {
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(15);
+        Exception? lastError = null;
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            try
+            {
+                await using var connection = new NatsConnection(new NatsOpts
+                {
+                    Url = natsUrl,
+                    RetryOnInitialConnect = true
+                });
+                var jetStream = new NatsJSContextFactory().CreateContext(connection);
+                _ = await jetStream.GetAccountInfoAsync();
+                return;
+            }
+            catch (Exception ex)
+            {
+                lastError = ex;
+                await Task.Delay(250);
+            }
+        }
+
+        throw new TimeoutException("NATS JetStream did not become ready for tests.", lastError);
     }
 
     public static async Task<string> WaitForSubjectAsync(

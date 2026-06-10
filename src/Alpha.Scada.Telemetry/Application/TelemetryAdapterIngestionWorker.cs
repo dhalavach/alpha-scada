@@ -28,6 +28,7 @@ public sealed class TelemetryAdapterIngestionWorker(
         var jetStream = new NatsJSContextFactory().CreateContext(connection);
         var consumer = await CreateConsumerWhenReadyAsync(jetStream, stoppingToken);
         var degreeOfParallelism = ingestionOptions.EffectiveMaxDegreeOfParallelism;
+        var maxDeliveriesWatchdog = WatchMaxDeliveriesAsync(connection, stoppingToken);
 
         logger.LogInformation(
             "Telemetry adapter listening to {Subject} on {Stream} with max degree of parallelism {MaxDegreeOfParallelism}.",
@@ -37,9 +38,10 @@ public sealed class TelemetryAdapterIngestionWorker(
         await TelemetryParallelPump.RunSafelyAsync(
             consumer.ConsumeAsync<byte[]>(cancellationToken: stoppingToken),
             degreeOfParallelism,
-            async (message, ct) => await ProcessOneMeasuredAsync(connection, message, ct),
+            async (message, ct) => await ProcessOneMeasuredAsync(jetStream, message, ct),
             ex => logger.LogError(ex, "Telemetry adapter message processing escaped its guarded path."),
             stoppingToken);
+        await maxDeliveriesWatchdog;
     }
 
     private async Task<INatsJSConsumer> CreateConsumerWhenReadyAsync(INatsJSContext jetStream, CancellationToken cancellationToken)
@@ -72,14 +74,14 @@ public sealed class TelemetryAdapterIngestionWorker(
     }
 
     private async ValueTask ProcessOneMeasuredAsync(
-        NatsConnection connection,
+        INatsJSContext jetStream,
         INatsJSMsg<byte[]> message,
         CancellationToken cancellationToken)
     {
         var measurement = metrics.Begin();
         try
         {
-            measurement.Complete(await ProcessAsync(connection, message, cancellationToken));
+            measurement.Complete(await ProcessAsync(jetStream, message, cancellationToken));
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -93,7 +95,7 @@ public sealed class TelemetryAdapterIngestionWorker(
     }
 
     private async Task<TelemetryIngestionOutcome> ProcessAsync(
-        NatsConnection connection,
+        INatsJSContext jetStream,
         INatsJSMsg<byte[]> message,
         CancellationToken cancellationToken)
     {
@@ -118,11 +120,11 @@ public sealed class TelemetryAdapterIngestionWorker(
         }
         catch (JsonException ex)
         {
-            return await DeadLetterAsync(connection, message, messageId, ex, cancellationToken);
+            return await DeadLetterAsync(jetStream, message, messageId, ex, cancellationToken);
         }
         catch (InvalidTelemetryEnvelopeException ex)
         {
-            return await DeadLetterAsync(connection, message, messageId, ex, cancellationToken);
+            return await DeadLetterAsync(jetStream, message, messageId, ex, cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -182,7 +184,7 @@ public sealed class TelemetryAdapterIngestionWorker(
     }
 
     private async Task<TelemetryIngestionOutcome> DeadLetterAsync(
-        NatsConnection connection,
+        INatsJSContext jetStream,
         INatsJSMsg<byte[]> message,
         string messageId,
         Exception exception,
@@ -190,11 +192,20 @@ public sealed class TelemetryAdapterIngestionWorker(
     {
         logger.LogWarning(exception, "Telemetry adapter dead-lettered invalid payload from {Subject}.", message.Subject);
         var payload = JsonSerializer.SerializeToUtf8Bytes(
-            new DeadLetteredTelemetry(message.Subject, messageId, exception.GetType().Name, exception.Message, DateTimeOffset.UtcNow),
+            DeadLetteredTelemetryFactory.Create(message.Subject, messageId, exception, message.Data, DateTimeOffset.UtcNow),
             JsonOptions);
+        var headers = new NatsHeaders
+        {
+            [RawTelemetryHeaders.NatsMessageId] = messageId
+        };
         try
         {
-            await connection.PublishAsync(Topics.Dlq("telemetry", message.Subject), payload, cancellationToken: cancellationToken);
+            var ack = await jetStream.PublishAsync(
+                Topics.Dlq("telemetry", message.Subject),
+                payload,
+                headers: headers,
+                cancellationToken: cancellationToken);
+            ack.EnsureSuccess();
             await message.AckTerminateAsync(
                 new AckOpts
                 {
@@ -211,6 +222,29 @@ public sealed class TelemetryAdapterIngestionWorker(
         {
             logger.LogWarning(ex, "Telemetry adapter could not complete dead-letter handling for {Subject}; JetStream will redeliver after AckWait.", message.Subject);
             return TelemetryIngestionOutcome.TerminalError;
+        }
+    }
+
+    private async Task WatchMaxDeliveriesAsync(NatsConnection connection, CancellationToken cancellationToken)
+    {
+        const string advisorySubject = "$JS.EVENT.ADVISORY.CONSUMER.MAX_DELIVERIES.ALPHA_EDGE.telemetry-edge-json";
+        try
+        {
+            await foreach (var advisory in connection.SubscribeAsync<string>(advisorySubject, cancellationToken: cancellationToken)
+                               .WithCancellation(cancellationToken))
+            {
+                metrics.RecordMaxDeliveriesExhausted();
+                logger.LogError(
+                    "Telemetry adapter message exhausted max JetStream deliveries. Advisory: {Advisory}",
+                    advisory.Data);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Telemetry adapter max-deliveries advisory watcher stopped unexpectedly.");
         }
     }
 
@@ -265,10 +299,4 @@ public sealed class TelemetryAdapterIngestionWorker(
         return new Guid(hash.AsSpan(0, 16)).ToString("D");
     }
 
-    private sealed record DeadLetteredTelemetry(
-        string Subject,
-        string MessageId,
-        string ErrorType,
-        string ErrorMessage,
-        DateTimeOffset DeadLetteredAtUtc);
 }

@@ -210,7 +210,7 @@ Ingestion writes are **set-based** (`insert … select from unnest(...)`), not r
 ## 12. Known limitations, risks & roadmap
 
 **Correctness / reliability**
-- **DLQ is not durable.** The ingestion gateway publishes dead-letters to `alpha._dlq.telemetry.*` over *core* NATS with no stream capturing the subject → records are lost unless something is subscribed. **Fix:** back `alpha._dlq.>` with a JetStream stream. Also, persistent *non-poison* failures exhaust `MaxDeliver` (5) and vanish without a DLQ record.
+- **Telemetry DLQ is durable for poison messages.** The ingestion gateway publishes invalid envelopes to `ALPHA_DLQ` (`alpha_dlq.>`) with the original payload capped at 64 KB, so operators can inspect and replay them. Persistent *non-poison* failures still rely on JetStream max-delivery advisories plus metrics rather than automatic payload capture.
 - **Asset `UnitStatusChanged` first-emit window** — non-atomic (cascade after a separate raw-tx commit). Self-heals today; if status ever needs guaranteed delivery, apply the alarm-outbox pattern to Asset.
 - **Report continuous aggregate** — `telemetry_minute` is created with a 3-day refresh window and `with no data`; reports for *past* months or for late-arriving (>3-day) data may under-count until/unless a wider/triggered refresh or one-time backfill is added.
 

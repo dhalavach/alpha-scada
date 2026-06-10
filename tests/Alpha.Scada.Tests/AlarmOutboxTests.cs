@@ -130,6 +130,7 @@ public sealed class AlarmOutboxTests(PostgresContainerFixture postgres)
         var settings = new Dictionary<string, string?>
         {
             ["ConnectionStrings:Postgres"] = connectionString,
+            ["Jwt:Secret"] = "test-secret-test-secret-test-secret-32",
             ["Services:Asset"] = routeBaseAddress,
             ["Services:Tenant"] = routeBaseAddress
         };

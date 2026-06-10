@@ -38,11 +38,13 @@ public static class Topics
     public const string AlarmAcknowledgedEvent = "alpha.alarm.acknowledged";
     public const string ReportRequested = "alpha.report.requested";
     public const string ReportCompleted = "alpha.report.completed";
+    public const string DlqWildcard = "alpha_dlq.>";
 
     public const string EdgeStream = "ALPHA_EDGE";
     public const string DomainStream = "ALPHA_DOMAIN";
     public const string JobsStream = "ALPHA_JOBS";
+    public const string DlqStream = "ALPHA_DLQ";
 
     public static string Dlq(string service, string originalSubject) =>
-        $"alpha._dlq.{service}.{originalSubject}";
+        $"alpha_dlq.{service}.{originalSubject}";
 }
