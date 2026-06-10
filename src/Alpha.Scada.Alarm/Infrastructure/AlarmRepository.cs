@@ -125,6 +125,22 @@ public sealed class AlarmRepository
         return await ReadAlarmAsync(command, cancellationToken);
     }
 
+    public async Task<IReadOnlyCollection<AlarmDto>> ClearCommunicationLostAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        Guid unitId,
+        CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand("""
+            update alarm_events
+            set state = 'cleared', cleared_at_utc = now()
+            where unit_id = @unit_id and tag_id is null and state in ('active', 'acknowledged')
+            returning id, tenant_id, unit_id, tag_id, severity, message, state, raised_at_utc, acknowledged_at_utc, cleared_at_utc
+            """, connection, transaction);
+        command.Parameters.AddWithValue("unit_id", unitId);
+        return await ReadAlarmsAsync(command, cancellationToken);
+    }
+
     public async Task<IReadOnlyCollection<AlarmDto>> GetActiveAsync(CurrentUserDto user, CancellationToken cancellationToken)
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);

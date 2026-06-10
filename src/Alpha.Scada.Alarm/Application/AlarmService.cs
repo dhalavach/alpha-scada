@@ -54,6 +54,37 @@ public sealed class AlarmService(
     public Task<AlarmRaised?> RaiseCommunicationLostAsync(UnitDto unit, CancellationToken cancellationToken) =>
         RaiseCommunicationLostAsync(unit, null, cancellationToken);
 
+    public async Task<IReadOnlyCollection<AlarmCleared>> ClearCommunicationLostAsync(
+        Guid unitId,
+        UnitRouteKeys route,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        var alarms = await repository.ClearCommunicationLostAsync(connection, transaction, unitId, cancellationToken);
+        var cleared = alarms.Select(alarm => new AlarmCleared(
+            alarm.Id,
+            alarm.TenantId,
+            alarm.UnitId,
+            alarm.TagId,
+            route.TenantKey,
+            route.SiteKey,
+            route.UnitKey,
+            alarm.ClearedAtUtc ?? DateTimeOffset.UtcNow)).ToArray();
+        if (cleared.Length > 0)
+        {
+            await repository.EnqueueOutboxAsync(connection, transaction, cleared, cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        if (cleared.Length > 0)
+        {
+            outboxSignal.Kick();
+        }
+
+        return cleared;
+    }
+
     public Task<IReadOnlyCollection<AlarmDto>> GetActiveAsync(CurrentUserDto user, CancellationToken cancellationToken) =>
         repository.GetActiveAsync(user, cancellationToken);
 

@@ -80,11 +80,59 @@ public sealed class CommunicationLossAlarmTests(PostgresContainerFixture postgre
         }
     }
 
+    [Fact]
+    public async Task Online_unit_status_clears_communication_lost_alarm_and_rearms_next_outage()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"alpha-comm-loss-clear-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var nats = await ContainerSupport.StartOrSkipAsync(
+                () => NatsTestSupport.StartAsync(tempDir),
+                "communication-loss clear NATS integration test");
+            await using (nats)
+            await using (var catalog = await FakeRouteServer.StartAsync())
+            {
+                var connectionString = await postgres.CreateDatabaseAsync(nameof(CommunicationLossAlarmTests));
+                await WaitForPostgresAsync(connectionString);
+
+                var natsUrl = NatsTestSupport.Url(nats);
+                using var host = BuildAlarmHost(
+                    connectionString,
+                    natsUrl,
+                    catalog.BaseAddress);
+
+                await host.Services.GetRequiredService<AlarmMigrator>().MigrateAsync(CancellationToken.None);
+                await host.StartAsync();
+                await Task.Delay(250);
+
+                await PublishStatusAsync(host, natsUrl, "offline", Topics.AlarmRaisedEvent);
+                await PublishStatusAsync(host, natsUrl, "online", Topics.AlarmClearedEvent);
+
+                Assert.Equal(1, await CountCommunicationLossAsync(connectionString, "cleared"));
+                Assert.Equal(0, await CountOpenCommunicationLossAsync(connectionString));
+
+                await PublishStatusAsync(host, natsUrl, "offline", Topics.AlarmRaisedEvent);
+                await PublishStatusAsync(host, natsUrl, "online", Topics.AlarmClearedEvent);
+
+                Assert.Equal(2, await CountCommunicationLossAsync(connectionString, "cleared"));
+                Assert.Equal(0, await CountOpenCommunicationLossAsync(connectionString));
+
+                await host.StopAsync();
+            }
+        }
+        finally
+        {
+            Directory.Delete(tempDir, recursive: true);
+        }
+    }
+
     private static IHost BuildAlarmHost(string connectionString, string natsUrl, string routeBaseAddress)
     {
         var settings = new Dictionary<string, string?>
         {
             ["ConnectionStrings:Postgres"] = connectionString,
+            ["Jwt:Secret"] = "test-secret-test-secret-test-secret-32",
             ["Nats:Url"] = natsUrl,
             ["Services:Asset"] = routeBaseAddress,
             ["Services:Tenant"] = routeBaseAddress
@@ -113,10 +161,31 @@ public sealed class CommunicationLossAlarmTests(PostgresContainerFixture postgre
                 options.Discovery.IncludeAssembly(typeof(UnitStatusAlarmHandler).Assembly);
                 options.PublishMessage<UnitStatusChanged>().ToNatsSubject(Topics.StatusChangedEvent).UseJetStream(Topics.DomainStream);
                 options.PublishMessage<AlarmRaised>().ToNatsSubject(Topics.AlarmRaisedEvent).UseJetStream(Topics.DomainStream);
+                options.PublishMessage<AlarmCleared>().ToNatsSubject(Topics.AlarmClearedEvent).UseJetStream(Topics.DomainStream);
                 options.ListenToNatsSubject(Topics.StatusChangedEvent).UseJetStream(Topics.DomainStream, "comm-loss-test-status");
             })
             .Build();
     }
+
+    private static async Task PublishStatusAsync(IHost host, string natsUrl, string status, string expectedAlarmSubject)
+    {
+        var received = NatsTestSupport.WaitForSubjectAsync(natsUrl, expectedAlarmSubject, TimeSpan.FromSeconds(10));
+        await host.Services.GetRequiredService<Wolverine.IMessageBus>().PublishAsync(StatusChanged(status));
+        Assert.Equal(expectedAlarmSubject, await received);
+    }
+
+    private static UnitStatusChanged StatusChanged(string status) =>
+        new(
+            TenantId,
+            SiteId,
+            UnitId,
+            "demo-operator",
+            "demo-site",
+            "chp-001",
+            "Combined Heat and Power Unit 001",
+            status,
+            DateTimeOffset.UtcNow,
+            DateTimeOffset.UtcNow.Subtract(TimeSpan.FromMinutes(5)));
 
     private static async Task WaitForPostgresAsync(string connectionString)
     {
@@ -141,6 +210,27 @@ public sealed class CommunicationLossAlarmTests(PostgresContainerFixture postgre
         await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync();
         await using var command = new NpgsqlCommand($"select count(*) from {tableName}", connection);
+        return Convert.ToInt32(await command.ExecuteScalarAsync());
+    }
+
+    private static async Task<int> CountCommunicationLossAsync(string connectionString, string state)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand(
+            "select count(*) from alarm_events where tag_id is null and state = @state",
+            connection);
+        command.Parameters.AddWithValue("state", state);
+        return Convert.ToInt32(await command.ExecuteScalarAsync());
+    }
+
+    private static async Task<int> CountOpenCommunicationLossAsync(string connectionString)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand(
+            "select count(*) from alarm_events where tag_id is null and state in ('active', 'acknowledged')",
+            connection);
         return Convert.ToInt32(await command.ExecuteScalarAsync());
     }
 
