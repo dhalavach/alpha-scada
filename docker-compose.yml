@@ -273,6 +273,10 @@ services:
   nats:
     image: nats:2.12-alpine
     command: ["-c", "/etc/nats/nats-server.conf"]
+    environment:
+      NATS_PASSWORD_EDGE: ${NATS_PASSWORD_EDGE:?NATS_PASSWORD_EDGE must be set in .env}
+      NATS_PASSWORD_SERVICES: ${NATS_PASSWORD_SERVICES:?NATS_PASSWORD_SERVICES must be set in .env}
+      NATS_PASSWORD_ADMIN: ${NATS_PASSWORD_ADMIN:?NATS_PASSWORD_ADMIN must be set in .env}
     networks:
       - alpha-internal
     ports:

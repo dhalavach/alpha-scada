@@ -1,14 +1,17 @@
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Configurations;
 using DotNet.Testcontainers.Containers;
+using Alpha.Scada.ServiceDefaults.Messaging;
 using NATS.Client.Core;
+using NATS.Client.JetStream;
+using NATS.Client.JetStream.Models;
 
 namespace Alpha.Scada.Tests;
 
 public sealed class NatsSecurityTests
 {
     [Fact]
-    public async Task Nats_rejects_bad_credentials_and_accepts_edge_ingress()
+    public async Task Nats_enforces_edge_ingress_permissions()
     {
         var tempDir = Path.Combine(Path.GetTempPath(), $"alpha-nats-security-test-{Guid.NewGuid():N}");
         Directory.CreateDirectory(tempDir);
@@ -24,8 +27,22 @@ public sealed class NatsSecurityTests
                 }
                 authorization {
                   users = [
-                    { user: "edge", password: "edge-pass" },
-                    { user: "services", password: "services-pass" }
+                    {
+                      user: "edge"
+                      password: "edge-pass"
+                      permissions: {
+                        publish: ["alpha.*.*.*.telemetry", "alpha.*.*.*.status"]
+                        subscribe: ["_INBOX.>"]
+                      }
+                    },
+                    {
+                      user: "services"
+                      password: "services-pass"
+                      permissions: {
+                        publish: [">"]
+                        subscribe: [">"]
+                      }
+                    }
                   ]
                 }
                 """);
@@ -57,14 +74,47 @@ public sealed class NatsSecurityTests
                 var natsUrl = $"nats://{nats.Hostname}:{nats.GetMappedPublicPort(4222)}";
                 Assert.False(await CanConnectAsync(natsUrl, "wrong", "wrong"));
 
+                await CreateEdgeStreamAsync(natsUrl);
+
+                var telemetrySubject = Topics.Telemetry("demo", "site", "unit");
                 var received = WaitForSubjectAsync(
                     natsUrl,
-                    "alpha.demo.site.unit.telemetry");
+                    telemetrySubject,
+                    user: "services",
+                    password: "services-pass",
+                    timeout: TimeSpan.FromSeconds(5));
 
                 await Task.Delay(250);
-                await PublishAsync(natsUrl, "edge", "edge-pass", "alpha.demo.site.unit.telemetry");
+                await PublishAsync(natsUrl, "edge", "edge-pass", telemetrySubject);
 
-                Assert.Equal("alpha.demo.site.unit.telemetry", await received.WaitAsync(TimeSpan.FromSeconds(5)));
+                Assert.Equal(telemetrySubject, await received);
+
+                var forgedAlarm = WaitForSubjectOrNullAsync(
+                    natsUrl,
+                    Topics.AlarmRaisedEvent,
+                    user: "services",
+                    password: "services-pass",
+                    timeout: TimeSpan.FromSeconds(2));
+                await Task.Delay(250);
+                await PublishIgnoringDeniedAsync(natsUrl, "edge", "edge-pass", Topics.AlarmRaisedEvent);
+                Assert.Null(await forgedAlarm);
+
+                var snoop = WaitForSubjectOrNullAsync(
+                    natsUrl,
+                    telemetrySubject,
+                    user: "edge",
+                    password: "edge-pass",
+                    timeout: TimeSpan.FromSeconds(2));
+                await Task.Delay(250);
+                await PublishAsync(natsUrl, "services", "services-pass", telemetrySubject);
+                Assert.Null(await snoop);
+
+                await PublishJetStreamAsync(
+                    natsUrl,
+                    "edge",
+                    "edge-pass",
+                    telemetrySubject,
+                    messageId: Guid.NewGuid().ToString("D"));
             }
         }
         finally
@@ -73,7 +123,12 @@ public sealed class NatsSecurityTests
         }
     }
 
-    private static async Task<string> WaitForSubjectAsync(string natsUrl, string subject)
+    private static async Task<string> WaitForSubjectAsync(
+        string natsUrl,
+        string subject,
+        string user,
+        string password,
+        TimeSpan timeout)
     {
         await using var connection = new NatsConnection(new NatsOpts
         {
@@ -81,8 +136,8 @@ public sealed class NatsSecurityTests
             RetryOnInitialConnect = true,
             AuthOpts = new NatsAuthOpts
             {
-                Username = "services",
-                Password = "services-pass"
+                Username = user,
+                Password = password
             }
         });
 
@@ -100,12 +155,29 @@ public sealed class NatsSecurityTests
 
         try
         {
-            return await receive.WaitAsync(TimeSpan.FromSeconds(5));
+            return await receive.WaitAsync(timeout);
         }
         catch (TimeoutException)
         {
             await cts.CancelAsync();
             throw new TimeoutException($"No NATS message arrived on {subject}.");
+        }
+    }
+
+    private static async Task<string?> WaitForSubjectOrNullAsync(
+        string natsUrl,
+        string subject,
+        string user,
+        string password,
+        TimeSpan timeout)
+    {
+        try
+        {
+            return await WaitForSubjectAsync(natsUrl, subject, user, password, timeout);
+        }
+        catch
+        {
+            return null;
         }
     }
 
@@ -148,4 +220,61 @@ public sealed class NatsSecurityTests
         await connection.PublishAsync(subject, Array.Empty<byte>());
         await connection.PingAsync();
     }
+
+    private static async Task PublishIgnoringDeniedAsync(string natsUrl, string user, string password, string subject)
+    {
+        try
+        {
+            await PublishAsync(natsUrl, user, password, subject);
+        }
+        catch
+        {
+            // Permission failures may surface as async protocol errors depending on timing.
+        }
+    }
+
+    private static async Task CreateEdgeStreamAsync(string natsUrl)
+    {
+        await using var connection = CreateConnection(natsUrl, "services", "services-pass");
+        var jetStream = new NatsJSContextFactory().CreateContext(connection);
+        await jetStream.CreateOrUpdateStreamAsync(new StreamConfig
+        {
+            Name = Topics.EdgeStream,
+            Subjects =
+            [
+                Topics.TelemetryWildcard,
+                Topics.StatusWildcard,
+                Topics.SparkplugWildcard
+            ]
+        });
+    }
+
+    private static async Task PublishJetStreamAsync(
+        string natsUrl,
+        string user,
+        string password,
+        string subject,
+        string messageId)
+    {
+        await using var connection = CreateConnection(natsUrl, user, password);
+        var headers = new NatsHeaders
+        {
+            [RawTelemetryHeaders.NatsMessageId] = messageId
+        };
+        var jetStream = new NatsJSContextFactory().CreateContext(connection);
+        var ack = await jetStream.PublishAsync(subject, Array.Empty<byte>(), headers: headers);
+        ack.EnsureSuccess();
+    }
+
+    private static NatsConnection CreateConnection(string natsUrl, string user, string password) =>
+        new(new NatsOpts
+        {
+            Url = natsUrl,
+            RetryOnInitialConnect = true,
+            AuthOpts = new NatsAuthOpts
+            {
+                Username = user,
+                Password = password
+            }
+        });
 }

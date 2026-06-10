@@ -17,10 +17,10 @@ ensure_value() {
 ensure_value "JWT_SECRET" "$(openssl rand -base64 48 | tr -d '\n')"
 
 ensure_value "NATS_USER_EDGE" "edge"
-ensure_value "NATS_PASSWORD_EDGE" "edge-pass"
+ensure_value "NATS_PASSWORD_EDGE" "$(openssl rand -hex 16)"
 ensure_value "NATS_USER_SERVICES" "services"
-ensure_value "NATS_PASSWORD_SERVICES" "services-pass"
+ensure_value "NATS_PASSWORD_SERVICES" "$(openssl rand -hex 16)"
 ensure_value "NATS_USER_ADMIN" "admin"
-ensure_value "NATS_PASSWORD_ADMIN" "admin-pass"
+ensure_value "NATS_PASSWORD_ADMIN" "$(openssl rand -hex 16)"
 
 echo "Development secrets are ready in $env_file"
