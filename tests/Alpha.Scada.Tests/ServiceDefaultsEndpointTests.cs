@@ -96,6 +96,7 @@ public sealed class ServiceDefaultsEndpointTests(PostgresContainerFixture postgr
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
+                ["Jwt:Secret"] = "test-secret-test-secret-test-secret-32",
                 ["Services:Asset"] = "http://asset:8080"
             })
             .Build();

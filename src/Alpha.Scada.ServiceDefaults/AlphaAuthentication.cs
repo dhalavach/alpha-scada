@@ -41,6 +41,8 @@ public sealed record AuthenticatedUser(CurrentUserDto Current)
 
 public static class AlphaAuthentication
 {
+    public const string ServiceOnlyPolicy = "ServiceOnly";
+
     public static IServiceCollection AddAlphaJwtAuthentication(
         this IServiceCollection services,
         IConfiguration configuration,
@@ -54,7 +56,8 @@ public static class AlphaAuthentication
                 options.TokenValidationParameters = JwtTokenService.CreateValidationParameters(configuration);
                 configure?.Invoke(options);
             });
-        services.AddAuthorization();
+        services.AddAuthorization(options =>
+            options.AddPolicy(ServiceOnlyPolicy, policy => policy.RequireRole(Roles.Service)));
         return services;
     }
 

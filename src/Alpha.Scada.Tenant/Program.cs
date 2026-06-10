@@ -16,21 +16,21 @@ await app.ApplyAlphaMigrationsAsync();
 app.UseAlphaAuthorization();
 app.MapAlphaOperationalEndpoints(serviceName);
 
-app.MapGroup("/internal/v1")
-    .RequireAuthorization()
-    .MapGet("/tenants", async (AuthenticatedUser user, TenantService service, HttpContext context) =>
-        Results.Ok(await service.GetTenantsAsync(user.Current, context.RequestAborted)));
+var internalApi = app.MapGroup("/internal/v1").RequireAuthorization();
 
-app.MapGet("/internal/v1/tenants/resolve/{tenantKey}", async (string tenantKey, TenantService service, CancellationToken cancellationToken) =>
+internalApi.MapGet("/tenants", async (AuthenticatedUser user, TenantService service, HttpContext context) =>
+    Results.Ok(await service.GetTenantsAsync(user.Current, context.RequestAborted)));
+
+internalApi.MapGet("/tenants/resolve/{tenantKey}", async (string tenantKey, TenantService service, CancellationToken cancellationToken) =>
 {
     var tenant = await service.ResolveAsync(tenantKey, cancellationToken);
     return tenant is null ? Results.NotFound() : Results.Ok(tenant);
-});
+}).RequireAuthorization(AlphaAuthentication.ServiceOnlyPolicy);
 
-app.MapGet("/internal/v1/tenants/{tenantId:guid}", async (Guid tenantId, TenantService service, CancellationToken cancellationToken) =>
+internalApi.MapGet("/tenants/{tenantId:guid}", async (Guid tenantId, TenantService service, CancellationToken cancellationToken) =>
 {
     var tenant = await service.GetByIdAsync(tenantId, cancellationToken);
     return tenant is null ? Results.NotFound() : Results.Ok(tenant);
-});
+}).RequireAuthorization(AlphaAuthentication.ServiceOnlyPolicy);
 
 app.Run();

@@ -64,9 +64,6 @@ public sealed class AssetService(
         return events;
     }
 
-    public Task<IReadOnlyCollection<UnitDto>> GetStaleUnitsAsync(int minutes, CancellationToken cancellationToken) =>
-        repository.GetStaleUnitsAsync(minutes, cancellationToken);
-
     private static UnitStatusChanged ToStatusChanged(
         UnitDto unit,
         UnitStatusRoute route) =>

@@ -48,7 +48,8 @@ internalApi.MapPost("/alarms/{alarmId:guid}/ack", async (Guid alarmId, Authentic
     return Results.NoContent();
 });
 
-app.MapGet("/internal/v1/alarms/count", async (Guid unitId, string period, AlarmService service, CancellationToken cancellationToken) =>
-    Results.Ok(await service.CountForUnitPeriodAsync(unitId, period, cancellationToken)));
+internalApi.MapGet("/alarms/count", async (Guid unitId, string period, AlarmService service, CancellationToken cancellationToken) =>
+    Results.Ok(await service.CountForUnitPeriodAsync(unitId, period, cancellationToken)))
+    .RequireAuthorization(AlphaAuthentication.ServiceOnlyPolicy);
 
 app.Run();

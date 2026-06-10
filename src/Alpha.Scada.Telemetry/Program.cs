@@ -46,7 +46,8 @@ internalApi.MapGet("/telemetry/tags/{tagId:guid}/history", async (Guid tagId, in
     return Results.Ok(await service.GetHistoryAsync(tagId, window, user.Current, context.RequestAborted));
 });
 
-app.MapPost("/internal/v1/telemetry/units/{unitId:guid}/report-aggregate", async (Guid unitId, ReportAggregateRequest request, TelemetryService service, CancellationToken cancellationToken) =>
-    Results.Ok(await service.GetReportAggregateAsync(unitId, request, cancellationToken)));
+internalApi.MapPost("/telemetry/units/{unitId:guid}/report-aggregate", async (Guid unitId, ReportAggregateRequest request, TelemetryService service, CancellationToken cancellationToken) =>
+    Results.Ok(await service.GetReportAggregateAsync(unitId, request, cancellationToken)))
+    .RequireAuthorization(AlphaAuthentication.ServiceOnlyPolicy);
 
 app.Run();

@@ -4,6 +4,7 @@ using System.Text;
 using Alpha.Scada.Contracts;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.IdentityModel.Tokens;
 
 namespace Alpha.Scada.ServiceDefaults;
@@ -84,7 +85,7 @@ public static class JwtTokenServiceRegistration
     public static IServiceCollection AddJwtTokenService(this IServiceCollection services, IConfiguration configuration)
     {
         _ = JwtTokenService.GetSigningSecret(configuration);
-        services.AddSingleton<JwtTokenService>();
+        services.TryAddSingleton<JwtTokenService>();
         return services;
     }
 }

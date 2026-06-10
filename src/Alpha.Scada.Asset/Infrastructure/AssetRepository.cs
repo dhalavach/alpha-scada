@@ -187,18 +187,6 @@ public sealed class AssetRepository
         return changed;
     }
 
-    public async Task<IReadOnlyCollection<UnitDto>> GetStaleUnitsAsync(int minutes, CancellationToken cancellationToken)
-    {
-        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        await using var command = new NpgsqlCommand("""
-            select id, tenant_id, site_id, key, name, model, status, last_seen_utc
-            from units
-            where last_seen_utc < now() - (@minutes::text || ' minutes')::interval
-            """, connection);
-        command.Parameters.AddWithValue("minutes", minutes);
-        return await ReadUnitsAsync(command, cancellationToken);
-    }
-
     private static async Task<IReadOnlyCollection<UnitDto>> ReadUnitsAsync(NpgsqlCommand command, CancellationToken cancellationToken)
     {
         var results = new List<UnitDto>();

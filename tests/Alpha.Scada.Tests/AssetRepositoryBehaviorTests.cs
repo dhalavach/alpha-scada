@@ -68,11 +68,9 @@ public sealed class AssetRepositoryBehaviorTests(PostgresContainerFixture postgr
             var repository = new AssetRepository(dataSource);
             await MakeUnitStaleAsync(connectionString, UnitId);
 
-            var stale = await repository.GetStaleUnitsAsync(2, CancellationToken.None);
             var changed = await repository.MarkStaleUnitsOfflineAsync(2, CancellationToken.None);
             var changedAgain = await repository.MarkStaleUnitsOfflineAsync(2, CancellationToken.None);
 
-            Assert.Single(stale);
             Assert.Single(changed);
             Assert.Empty(changedAgain);
             Assert.Equal("offline", changed.Single().Unit.Status);

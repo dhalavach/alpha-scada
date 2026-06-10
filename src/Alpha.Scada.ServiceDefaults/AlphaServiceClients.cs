@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 
 namespace Alpha.Scada.ServiceDefaults;
@@ -23,14 +24,23 @@ public static class AlphaServiceClients
         foreach (var clientName in clientNames.Distinct(StringComparer.Ordinal))
         {
             _ = options.GetRequiredEndpoint(clientName);
+        }
+
+        services.AddJwtTokenService(configuration);
+        services.TryAddSingleton<ServiceTokenProvider>();
+        services.TryAddTransient<ServiceAuthorizationHandler>();
+        services.AddSingleton<IOptions<AlphaServiceEndpointOptions>>(Options.Create(options));
+        foreach (var clientName in clientNames.Distinct(StringComparer.Ordinal))
+        {
             services.AddHttpClient(clientName, (provider, client) =>
             {
                 var endpoints = provider.GetRequiredService<IOptions<AlphaServiceEndpointOptions>>().Value;
                 client.BaseAddress = endpoints.GetRequiredEndpoint(clientName);
-            }).AddAlphaResilience();
+            })
+                .AddHttpMessageHandler<ServiceAuthorizationHandler>()
+                .AddAlphaResilience();
         }
 
-        services.AddSingleton<IOptions<AlphaServiceEndpointOptions>>(Options.Create(options));
         return services;
     }
 

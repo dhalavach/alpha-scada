@@ -37,19 +37,16 @@ internalApi.MapGet("/units/{unitId:guid}", async (Guid unitId, AuthenticatedUser
     return unit is null ? Results.NotFound() : Results.Ok(unit);
 });
 
-app.MapGet("/internal/v1/units/resolve", async (Guid tenantId, string siteKey, string unitKey, AssetService service, CancellationToken cancellationToken) =>
+internalApi.MapGet("/units/resolve", async (Guid tenantId, string siteKey, string unitKey, AssetService service, CancellationToken cancellationToken) =>
 {
     var unit = await service.ResolveUnitAsync(tenantId, siteKey, unitKey, cancellationToken);
     return unit is null ? Results.NotFound() : Results.Ok(unit);
-});
+}).RequireAuthorization(AlphaAuthentication.ServiceOnlyPolicy);
 
-app.MapGet("/internal/v1/units/{unitId:guid}/route", async (Guid unitId, AssetService service, CancellationToken cancellationToken) =>
+internalApi.MapGet("/units/{unitId:guid}/route", async (Guid unitId, AssetService service, CancellationToken cancellationToken) =>
 {
     var unit = await service.GetUnitRouteAsync(unitId, cancellationToken);
     return unit is null ? Results.NotFound() : Results.Ok(unit);
-});
-
-app.MapGet("/internal/v1/units/stale", async (int? minutes, AssetService service, CancellationToken cancellationToken) =>
-    Results.Ok(await service.GetStaleUnitsAsync(minutes ?? 2, cancellationToken)));
+}).RequireAuthorization(AlphaAuthentication.ServiceOnlyPolicy);
 
 app.Run();
