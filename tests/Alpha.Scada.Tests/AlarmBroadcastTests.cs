@@ -1,18 +1,15 @@
 using Alpha.Scada.Alarm.Contracts;
 using Alpha.Scada.ServiceDefaults.Messaging;
-using DotNet.Testcontainers.Builders;
-using DotNet.Testcontainers.Configurations;
-using DotNet.Testcontainers.Containers;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Npgsql;
 using Wolverine.Nats;
-using Xunit.Sdk;
 
 namespace Alpha.Scada.Tests;
 
-public sealed class AlarmBroadcastTests
+[Collection(ContainerCollection.Name)]
+public sealed class AlarmBroadcastTests(PostgresContainerFixture postgres)
 {
     [Fact]
     public async Task Alarm_raised_is_published_to_unit_alarm_subject()
@@ -21,23 +18,12 @@ public sealed class AlarmBroadcastTests
         Directory.CreateDirectory(tempDir);
         try
         {
-            var postgres = PostgresContainer();
-            IContainer nats;
-            try
-            {
-                await postgres.StartAsync();
-                nats = await NatsTestSupport.StartAsync(tempDir);
-            }
-            catch (DockerUnavailableException ex)
-            {
-                await postgres.DisposeAsync();
-                throw SkipException.ForSkip($"Docker is not available for alarm broadcast integration test: {ex.Message}");
-            }
-
-            await using (postgres)
+            var nats = await ContainerSupport.StartOrSkipAsync(
+                () => NatsTestSupport.StartAsync(tempDir),
+                "alarm broadcast NATS integration test");
             await using (nats)
             {
-                var connectionString = ConnectionString(postgres);
+                var connectionString = await postgres.CreateDatabaseAsync(nameof(AlarmBroadcastTests));
                 await WaitForPostgresAsync(connectionString);
                 var natsUrl = NatsTestSupport.Url(nats);
                 var subject = Topics.AlarmRaisedEvent;
@@ -69,16 +55,6 @@ public sealed class AlarmBroadcastTests
         }
     }
 
-    private static IContainer PostgresContainer() =>
-        new ContainerBuilder()
-            .WithImage(TestImages.Postgres)
-            .WithEnvironment("POSTGRES_DB", "alpha_test")
-            .WithEnvironment("POSTGRES_USER", "alpha")
-            .WithEnvironment("POSTGRES_PASSWORD", "alpha-pass")
-            .WithPortBinding(5432, true)
-            .WithWaitStrategy(Wait.ForUnixContainer().UntilInternalTcpPortIsAvailable(5432))
-            .Build();
-
     private static IHost BuildHost(string connectionString, string natsUrl)
     {
         var settings = new Dictionary<string, string?>
@@ -95,9 +71,6 @@ public sealed class AlarmBroadcastTests
             })
             .Build();
     }
-
-    private static string ConnectionString(IContainer postgres) =>
-        $"Host={postgres.Hostname};Port={postgres.GetMappedPublicPort(5432)};Database=alpha_test;Username=alpha;Password=alpha-pass";
 
     private static async Task WaitForPostgresAsync(string connectionString)
     {

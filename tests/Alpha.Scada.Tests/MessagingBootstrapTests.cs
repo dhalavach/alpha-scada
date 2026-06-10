@@ -1,15 +1,12 @@
 using Alpha.Scada.ServiceDefaults.Messaging;
-using DotNet.Testcontainers.Builders;
-using DotNet.Testcontainers.Configurations;
-using DotNet.Testcontainers.Containers;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Npgsql;
-using Xunit.Sdk;
 
 namespace Alpha.Scada.Tests;
 
-public sealed class MessagingBootstrapTests
+[Collection(ContainerCollection.Name)]
+public sealed class MessagingBootstrapTests(PostgresContainerFixture postgres)
 {
     [Fact]
     public async Task UseAlphaMessaging_starts_and_stops_with_postgres_and_nats()
@@ -18,32 +15,12 @@ public sealed class MessagingBootstrapTests
         Directory.CreateDirectory(tempDir);
         try
         {
-            var postgres = new ContainerBuilder()
-                .WithImage(TestImages.Postgres)
-                .WithEnvironment("POSTGRES_DB", "alpha_test")
-                .WithEnvironment("POSTGRES_USER", "alpha")
-                .WithEnvironment("POSTGRES_PASSWORD", "alpha-pass")
-                .WithPortBinding(5432, true)
-                .WithWaitStrategy(Wait.ForUnixContainer().UntilInternalTcpPortIsAvailable(5432))
-                .Build();
-
-            IContainer nats;
-            try
-            {
-                await postgres.StartAsync();
-                nats = await NatsTestSupport.StartAsync(tempDir);
-            }
-            catch (DockerUnavailableException ex)
-            {
-                await postgres.DisposeAsync();
-                throw SkipException.ForSkip($"Docker is not available for messaging bootstrap integration test: {ex.Message}");
-            }
-
-            await using (postgres)
+            var nats = await ContainerSupport.StartOrSkipAsync(
+                () => NatsTestSupport.StartAsync(tempDir),
+                "messaging bootstrap NATS integration test");
             await using (nats)
             {
-                var connectionString =
-                    $"Host={postgres.Hostname};Port={postgres.GetMappedPublicPort(5432)};Database=alpha_test;Username=alpha;Password=alpha-pass";
+                var connectionString = await postgres.CreateDatabaseAsync(nameof(MessagingBootstrapTests));
                 await WaitForPostgresAsync(connectionString);
 
                 var settings = new Dictionary<string, string?>

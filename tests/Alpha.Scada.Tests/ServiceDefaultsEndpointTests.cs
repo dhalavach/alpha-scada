@@ -1,7 +1,5 @@
 using Alpha.Scada.Contracts;
 using Alpha.Scada.ServiceDefaults;
-using DotNet.Testcontainers.Builders;
-using DotNet.Testcontainers.Containers;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.TestHost;
@@ -10,11 +8,11 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
-using Xunit.Sdk;
 
 namespace Alpha.Scada.Tests;
 
-public sealed class ServiceDefaultsEndpointTests
+[Collection(ContainerCollection.Name)]
+public sealed class ServiceDefaultsEndpointTests(PostgresContainerFixture postgres)
 {
     [Fact]
     public async Task Protected_endpoint_rejects_missing_token_and_binds_valid_user()
@@ -170,38 +168,11 @@ public sealed class ServiceDefaultsEndpointTests
         return Convert.ToInt64(await command.ExecuteScalarAsync());
     }
 
-    private static async Task WithPostgresAsync(Func<string, Task> run)
+    private async Task WithPostgresAsync(Func<string, Task> run)
     {
-        var postgres = new ContainerBuilder()
-            .WithImage(TestImages.Postgres)
-            .WithEnvironment("POSTGRES_DB", "alpha_test")
-            .WithEnvironment("POSTGRES_USER", "alpha")
-            .WithEnvironment("POSTGRES_PASSWORD", "alpha-pass")
-            .WithPortBinding(5432, true)
-            .WithWaitStrategy(Wait.ForUnixContainer().UntilInternalTcpPortIsAvailable(5432))
-            .Build();
-
-        try
-        {
-            await postgres.StartAsync();
-        }
-        catch (DockerUnavailableException ex)
-        {
-            await postgres.DisposeAsync();
-            throw SkipException.ForSkip($"Docker is not available for service defaults endpoint test: {ex.Message}");
-        }
-
-        try
-        {
-            var port = postgres.GetMappedPublicPort(5432);
-            var connectionString = $"Host=localhost;Port={port};Database=alpha_test;Username=alpha;Password=alpha-pass";
-            await WaitForPostgresAsync(connectionString);
-            await run(connectionString);
-        }
-        finally
-        {
-            await postgres.DisposeAsync();
-        }
+        var connectionString = await postgres.CreateDatabaseAsync(nameof(ServiceDefaultsEndpointTests));
+        await WaitForPostgresAsync(connectionString);
+        await run(connectionString);
     }
 
     private static async Task WaitForPostgresAsync(string connectionString)

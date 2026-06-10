@@ -10,9 +10,6 @@ using Alpha.Scada.Telemetry.Application;
 using Alpha.Scada.Telemetry.Application.Messaging;
 using Alpha.Scada.Telemetry.Contracts;
 using Alpha.Scada.Telemetry.Infrastructure;
-using DotNet.Testcontainers.Builders;
-using DotNet.Testcontainers.Configurations;
-using DotNet.Testcontainers.Containers;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -21,11 +18,11 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
-using Xunit.Sdk;
 
 namespace Alpha.Scada.Tests;
 
-public sealed class TelemetryPrimaryIngestionTests
+[Collection(ContainerCollection.Name)]
+public sealed class TelemetryPrimaryIngestionTests(PostgresContainerFixture postgres)
 {
     private static readonly Guid TenantId = Guid.Parse("10000000-0000-0000-0000-000000000001");
     private static readonly Guid SiteId = Guid.Parse("20000000-0000-0000-0000-000000000001");
@@ -39,33 +36,13 @@ public sealed class TelemetryPrimaryIngestionTests
         Directory.CreateDirectory(tempDir);
         try
         {
-            var postgres = new ContainerBuilder()
-                .WithImage(TestImages.Postgres)
-                .WithEnvironment("POSTGRES_DB", "alpha_test")
-                .WithEnvironment("POSTGRES_USER", "alpha")
-                .WithEnvironment("POSTGRES_PASSWORD", "alpha-pass")
-                .WithPortBinding(5432, true)
-                .WithWaitStrategy(Wait.ForUnixContainer().UntilInternalTcpPortIsAvailable(5432))
-                .Build();
-
-            IContainer nats;
-            try
-            {
-                await postgres.StartAsync();
-                nats = await NatsTestSupport.StartAsync(tempDir);
-            }
-            catch (DockerUnavailableException ex)
-            {
-                await postgres.DisposeAsync();
-                throw SkipException.ForSkip($"Docker is not available for telemetry primary integration test: {ex.Message}");
-            }
-
-            await using (postgres)
+            var nats = await ContainerSupport.StartOrSkipAsync(
+                () => NatsTestSupport.StartAsync(tempDir),
+                "telemetry primary NATS integration test");
             await using (nats)
             await using (var catalog = await FakeCatalogServer.StartAsync())
             {
-                var connectionString =
-                    $"Host={postgres.Hostname};Port={postgres.GetMappedPublicPort(5432)};Database=alpha_test;Username=alpha;Password=alpha-pass";
+                var connectionString = await postgres.CreateDatabaseAsync(nameof(TelemetryPrimaryIngestionTests));
                 await WaitForPostgresAsync(connectionString);
 
                 var natsUrl = NatsTestSupport.Url(nats);
@@ -153,99 +130,53 @@ public sealed class TelemetryPrimaryIngestionTests
     [Fact]
     public async Task Telemetry_repository_transaction_overload_rolls_back_and_commits_samples_with_current_state()
     {
-        var postgres = new ContainerBuilder()
-            .WithImage(TestImages.Postgres)
-            .WithEnvironment("POSTGRES_DB", "alpha_test")
-            .WithEnvironment("POSTGRES_USER", "alpha")
-            .WithEnvironment("POSTGRES_PASSWORD", "alpha-pass")
-            .WithPortBinding(5432, true)
-            .WithWaitStrategy(Wait.ForUnixContainer().UntilInternalTcpPortIsAvailable(5432))
-            .Build();
+        var connectionString = await postgres.CreateDatabaseAsync(nameof(TelemetryPrimaryIngestionTests));
+        await WaitForPostgresAsync(connectionString);
 
-        try
+        await using var dataSource = NpgsqlDataSource.Create(connectionString);
+        await new TelemetryMigrator(dataSource, NullLogger<TelemetryMigrator>.Instance).MigrateAsync(CancellationToken.None);
+        var repository = new TelemetryRepository(dataSource);
+        var request = IngestRequest(DateTimeOffset.UtcNow);
+
+        await using (var connection = await dataSource.OpenConnectionAsync())
+        await using (var transaction = await connection.BeginTransactionAsync())
         {
-            await postgres.StartAsync();
-        }
-        catch (DockerUnavailableException ex)
-        {
-            await postgres.DisposeAsync();
-            throw SkipException.ForSkip($"Docker is not available for telemetry transaction integration test: {ex.Message}");
+            await repository.IngestAsync(connection, transaction, request, CancellationToken.None);
+            await transaction.RollbackAsync();
         }
 
-        await using (postgres)
+        Assert.Equal(0, await CountRowsAsync(connectionString, "telemetry_samples"));
+        Assert.Equal(0, await CountRowsAsync(connectionString, "tag_current"));
+
+        await using (var connection = await dataSource.OpenConnectionAsync())
+        await using (var transaction = await connection.BeginTransactionAsync())
         {
-            var connectionString =
-                $"Host={postgres.Hostname};Port={postgres.GetMappedPublicPort(5432)};Database=alpha_test;Username=alpha;Password=alpha-pass";
-            await WaitForPostgresAsync(connectionString);
-
-            await using var dataSource = NpgsqlDataSource.Create(connectionString);
-            await new TelemetryMigrator(dataSource, NullLogger<TelemetryMigrator>.Instance).MigrateAsync(CancellationToken.None);
-            var repository = new TelemetryRepository(dataSource);
-            var request = IngestRequest(DateTimeOffset.UtcNow);
-
-            await using (var connection = await dataSource.OpenConnectionAsync())
-            await using (var transaction = await connection.BeginTransactionAsync())
-            {
-                await repository.IngestAsync(connection, transaction, request, CancellationToken.None);
-                await transaction.RollbackAsync();
-            }
-
-            Assert.Equal(0, await CountRowsAsync(connectionString, "telemetry_samples"));
-            Assert.Equal(0, await CountRowsAsync(connectionString, "tag_current"));
-
-            await using (var connection = await dataSource.OpenConnectionAsync())
-            await using (var transaction = await connection.BeginTransactionAsync())
-            {
-                await repository.IngestAsync(connection, transaction, request, CancellationToken.None);
-                await transaction.CommitAsync();
-            }
-
-            Assert.Equal(1, await CountRowsAsync(connectionString, "telemetry_samples"));
-            Assert.Equal(1, await CountRowsAsync(connectionString, "tag_current"));
+            await repository.IngestAsync(connection, transaction, request, CancellationToken.None);
+            await transaction.CommitAsync();
         }
+
+        Assert.Equal(1, await CountRowsAsync(connectionString, "telemetry_samples"));
+        Assert.Equal(1, await CountRowsAsync(connectionString, "tag_current"));
     }
 
     [Fact]
     public async Task Telemetry_repository_keeps_newest_current_value_when_samples_arrive_out_of_order()
     {
-        var postgres = new ContainerBuilder()
-            .WithImage(TestImages.Postgres)
-            .WithEnvironment("POSTGRES_DB", "alpha_test")
-            .WithEnvironment("POSTGRES_USER", "alpha")
-            .WithEnvironment("POSTGRES_PASSWORD", "alpha-pass")
-            .WithPortBinding(5432, true)
-            .WithWaitStrategy(Wait.ForUnixContainer().UntilInternalTcpPortIsAvailable(5432))
-            .Build();
+        var connectionString = await postgres.CreateDatabaseAsync(nameof(TelemetryPrimaryIngestionTests));
+        await WaitForPostgresAsync(connectionString);
 
-        try
-        {
-            await postgres.StartAsync();
-        }
-        catch (DockerUnavailableException ex)
-        {
-            await postgres.DisposeAsync();
-            throw SkipException.ForSkip($"Docker is not available for telemetry ordering integration test: {ex.Message}");
-        }
+        await using var dataSource = NpgsqlDataSource.Create(connectionString);
+        await new TelemetryMigrator(dataSource, NullLogger<TelemetryMigrator>.Instance).MigrateAsync(CancellationToken.None);
+        var repository = new TelemetryRepository(dataSource);
+        var older = DateTimeOffset.UtcNow.AddSeconds(-1);
+        var newer = DateTimeOffset.UtcNow;
 
-        await using (postgres)
-        {
-            var connectionString =
-                $"Host={postgres.Hostname};Port={postgres.GetMappedPublicPort(5432)};Database=alpha_test;Username=alpha;Password=alpha-pass";
-            await WaitForPostgresAsync(connectionString);
+        await repository.IngestAsync(IngestRequest(newer, 70), CancellationToken.None);
+        await repository.IngestAsync(IngestRequest(older, 55), CancellationToken.None);
 
-            await using var dataSource = NpgsqlDataSource.Create(connectionString);
-            await new TelemetryMigrator(dataSource, NullLogger<TelemetryMigrator>.Instance).MigrateAsync(CancellationToken.None);
-            var repository = new TelemetryRepository(dataSource);
-            var older = DateTimeOffset.UtcNow.AddSeconds(-1);
-            var newer = DateTimeOffset.UtcNow;
-
-            await repository.IngestAsync(IngestRequest(newer, 70), CancellationToken.None);
-            await repository.IngestAsync(IngestRequest(older, 55), CancellationToken.None);
-
-            Assert.Equal(2, await CountRowsAsync(connectionString, "telemetry_samples"));
-            Assert.Equal(1, await CountRowsAsync(connectionString, "tag_current"));
-            Assert.Equal(70, await CurrentValueAsync(connectionString));
-        }
+        Assert.Equal(2, await CountRowsAsync(connectionString, "telemetry_samples"));
+        Assert.Equal(1, await CountRowsAsync(connectionString, "tag_current"));
+        Assert.Equal(70, await CurrentValueAsync(connectionString));
     }
 
     private static IHost BuildTelemetryHost(string connectionString, string natsUrl, string catalogBaseAddress)

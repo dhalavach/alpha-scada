@@ -5,8 +5,6 @@ using Alpha.Scada.Reporting.Infrastructure;
 using Alpha.Scada.ServiceDefaults;
 using Alpha.Scada.TagCatalog.Infrastructure;
 using Alpha.Scada.Tenant.Infrastructure;
-using DotNet.Testcontainers.Builders;
-using DotNet.Testcontainers.Containers;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -14,11 +12,11 @@ using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
-using Xunit.Sdk;
 
 namespace Alpha.Scada.Tests;
 
-public sealed class BackendRepositoryTests
+[Collection(ContainerCollection.Name)]
+public sealed class BackendRepositoryTests(PostgresContainerFixture postgres)
 {
     private static readonly Guid TenantId = Guid.Parse("10000000-0000-0000-0000-000000000001");
     private static readonly Guid OtherTenantId = Guid.Parse("10000000-0000-0000-0000-000000000002");
@@ -159,34 +157,11 @@ public sealed class BackendRepositoryTests
             2,
             DateTimeOffset.UtcNow);
 
-    private static async Task WithPostgresAsync(Func<string, Task> run)
+    private async Task WithPostgresAsync(Func<string, Task> run)
     {
-        var postgres = new ContainerBuilder()
-            .WithImage(TestImages.Postgres)
-            .WithEnvironment("POSTGRES_DB", "alpha_test")
-            .WithEnvironment("POSTGRES_USER", "alpha")
-            .WithEnvironment("POSTGRES_PASSWORD", "alpha-pass")
-            .WithPortBinding(5432, true)
-            .WithWaitStrategy(Wait.ForUnixContainer().UntilInternalTcpPortIsAvailable(5432))
-            .Build();
-
-        try
-        {
-            await postgres.StartAsync();
-        }
-        catch (DockerUnavailableException ex)
-        {
-            await postgres.DisposeAsync();
-            throw SkipException.ForSkip($"Docker is not available for backend repository integration test: {ex.Message}");
-        }
-
-        await using (postgres)
-        {
-            var connectionString =
-                $"Host={postgres.Hostname};Port={postgres.GetMappedPublicPort(5432)};Database=alpha_test;Username=alpha;Password=alpha-pass";
-            await WaitForPostgresAsync(connectionString);
-            await run(connectionString);
-        }
+        var connectionString = await postgres.CreateDatabaseAsync(nameof(BackendRepositoryTests));
+        await WaitForPostgresAsync(connectionString);
+        await run(connectionString);
     }
 
     private static async Task WaitForPostgresAsync(string connectionString)

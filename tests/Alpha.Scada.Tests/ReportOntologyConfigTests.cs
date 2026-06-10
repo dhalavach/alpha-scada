@@ -7,15 +7,13 @@ using Alpha.Scada.Reporting.Infrastructure;
 using Alpha.Scada.ServiceDefaults;
 using Alpha.Scada.TagCatalog.Infrastructure;
 using Alpha.Scada.Telemetry.Infrastructure;
-using DotNet.Testcontainers.Builders;
-using DotNet.Testcontainers.Containers;
 using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
-using Xunit.Sdk;
 
 namespace Alpha.Scada.Tests;
 
-public sealed class ReportOntologyConfigTests
+[Collection(ContainerCollection.Name)]
+public sealed class ReportOntologyConfigTests(PostgresContainerFixture postgres)
 {
     private static readonly Guid TenantId = Guid.Parse("10000000-0000-0000-0000-000000000001");
     private static readonly Guid UnitId = Guid.Parse("30000000-0000-0000-0000-000000000001");
@@ -216,34 +214,11 @@ public sealed class ReportOntologyConfigTests
         }
     }
 
-    private static async Task WithPostgresAsync(Func<string, Task> run)
+    private async Task WithPostgresAsync(Func<string, Task> run)
     {
-        var postgres = new ContainerBuilder()
-            .WithImage(TestImages.Postgres)
-            .WithEnvironment("POSTGRES_DB", "alpha_test")
-            .WithEnvironment("POSTGRES_USER", "alpha")
-            .WithEnvironment("POSTGRES_PASSWORD", "alpha-pass")
-            .WithPortBinding(5432, true)
-            .WithWaitStrategy(Wait.ForUnixContainer().UntilInternalTcpPortIsAvailable(5432))
-            .Build();
-
-        try
-        {
-            await postgres.StartAsync();
-        }
-        catch (DockerUnavailableException ex)
-        {
-            await postgres.DisposeAsync();
-            throw SkipException.ForSkip($"Docker is not available for report ontology integration test: {ex.Message}");
-        }
-
-        await using (postgres)
-        {
-            var connectionString =
-                $"Host={postgres.Hostname};Port={postgres.GetMappedPublicPort(5432)};Database=alpha_test;Username=alpha;Password=alpha-pass";
-            await WaitForPostgresAsync(connectionString);
-            await run(connectionString);
-        }
+        var connectionString = await postgres.CreateDatabaseAsync(nameof(ReportOntologyConfigTests));
+        await WaitForPostgresAsync(connectionString);
+        await run(connectionString);
     }
 
     private static async Task WaitForPostgresAsync(string connectionString)

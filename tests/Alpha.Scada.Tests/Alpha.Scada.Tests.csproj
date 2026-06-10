@@ -23,6 +23,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Include="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\Alpha.Scada.Contracts\Alpha.Scada.Contracts.csproj" />
     <ProjectReference Include="..\..\src\Alpha.Scada.Alarm.Contracts\Alpha.Scada.Alarm.Contracts.csproj" />
     <ProjectReference Include="..\..\src\Alpha.Scada.Alarm\Alpha.Scada.Alarm.csproj" />

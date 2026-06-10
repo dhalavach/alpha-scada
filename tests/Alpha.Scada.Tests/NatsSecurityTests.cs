@@ -2,7 +2,6 @@ using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Configurations;
 using DotNet.Testcontainers.Containers;
 using NATS.Client.Core;
-using Xunit.Sdk;
 
 namespace Alpha.Scada.Tests;
 
@@ -31,23 +30,27 @@ public sealed class NatsSecurityTests
                 }
                 """);
 
-            var nats = new ContainerBuilder()
-                .WithImage(TestImages.Nats)
-                .WithBindMount(tempDir, "/etc/nats", AccessMode.ReadOnly)
-                .WithPortBinding(4222, true)
-                .WithPortBinding(1883, true)
-                .WithCommand("-c", "/etc/nats/nats-server.conf")
-                .WithWaitStrategy(Wait.ForUnixContainer().UntilInternalTcpPortIsAvailable(4222))
-                .Build();
-
-            try
+            var nats = await ContainerSupport.StartOrSkipAsync(async () =>
             {
-                await nats.StartAsync();
-            }
-            catch (DockerUnavailableException ex)
-            {
-                throw SkipException.ForSkip($"Docker is not available for NATS integration test: {ex.Message}");
-            }
+                var container = new ContainerBuilder()
+                    .WithImage(TestImages.Nats)
+                    .WithBindMount(tempDir, "/etc/nats", AccessMode.ReadOnly)
+                    .WithPortBinding(4222, true)
+                    .WithPortBinding(1883, true)
+                    .WithCommand("-c", "/etc/nats/nats-server.conf")
+                    .WithWaitStrategy(Wait.ForUnixContainer().UntilInternalTcpPortIsAvailable(4222))
+                    .Build();
+                try
+                {
+                    await container.StartAsync();
+                    return container;
+                }
+                catch
+                {
+                    await container.DisposeAsync();
+                    throw;
+                }
+            }, "NATS security integration test");
 
             await using (nats)
             {

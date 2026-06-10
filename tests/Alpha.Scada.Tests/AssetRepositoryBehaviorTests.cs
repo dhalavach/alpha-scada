@@ -1,15 +1,13 @@
 using Alpha.Scada.Asset.Infrastructure;
 using Alpha.Scada.Contracts;
 using Alpha.Scada.ServiceDefaults;
-using DotNet.Testcontainers.Builders;
-using DotNet.Testcontainers.Containers;
 using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
-using Xunit.Sdk;
 
 namespace Alpha.Scada.Tests;
 
-public sealed class AssetRepositoryBehaviorTests
+[Collection(ContainerCollection.Name)]
+public sealed class AssetRepositoryBehaviorTests(PostgresContainerFixture postgres)
 {
     private static readonly Guid TenantId = Guid.Parse("10000000-0000-0000-0000-000000000001");
     private static readonly Guid OtherTenantId = Guid.Parse("10000000-0000-0000-0000-000000000002");
@@ -168,33 +166,11 @@ public sealed class AssetRepositoryBehaviorTests
         await command.ExecuteNonQueryAsync();
     }
 
-    private static async Task WithPostgresAsync(Func<string, Task> run)
+    private async Task WithPostgresAsync(Func<string, Task> run)
     {
-        IContainer postgres;
-        try
-        {
-            postgres = new ContainerBuilder()
-                .WithImage(TestImages.Postgres)
-                .WithEnvironment("POSTGRES_DB", "alpha_test")
-                .WithEnvironment("POSTGRES_USER", "alpha")
-                .WithEnvironment("POSTGRES_PASSWORD", "alpha-pass")
-                .WithPortBinding(5432, true)
-                .WithWaitStrategy(Wait.ForUnixContainer().UntilInternalTcpPortIsAvailable(5432))
-                .Build();
-            await postgres.StartAsync();
-        }
-        catch (DockerUnavailableException ex)
-        {
-            throw SkipException.ForSkip($"Docker is not available for asset repository integration test: {ex.Message}");
-        }
-
-        await using (postgres)
-        {
-            var connectionString =
-                $"Host={postgres.Hostname};Port={postgres.GetMappedPublicPort(5432)};Database=alpha_test;Username=alpha;Password=alpha-pass";
-            await WaitForPostgresAsync(connectionString);
-            await run(connectionString);
-        }
+        var connectionString = await postgres.CreateDatabaseAsync(nameof(AssetRepositoryBehaviorTests));
+        await WaitForPostgresAsync(connectionString);
+        await run(connectionString);
     }
 
     private static async Task WaitForPostgresAsync(string connectionString)

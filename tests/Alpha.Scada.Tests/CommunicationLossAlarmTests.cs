@@ -7,9 +7,6 @@ using Alpha.Scada.Asset.Contracts;
 using Alpha.Scada.Contracts;
 using Alpha.Scada.ServiceDefaults;
 using Alpha.Scada.ServiceDefaults.Messaging;
-using DotNet.Testcontainers.Builders;
-using DotNet.Testcontainers.Configurations;
-using DotNet.Testcontainers.Containers;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -19,11 +16,11 @@ using Microsoft.Extensions.Hosting;
 using Npgsql;
 using Wolverine;
 using Wolverine.Nats;
-using Xunit.Sdk;
 
 namespace Alpha.Scada.Tests;
 
-public sealed class CommunicationLossAlarmTests
+[Collection(ContainerCollection.Name)]
+public sealed class CommunicationLossAlarmTests(PostgresContainerFixture postgres)
 {
     private static readonly Guid TenantId = Guid.Parse("10000000-0000-0000-0000-000000000001");
     private static readonly Guid SiteId = Guid.Parse("20000000-0000-0000-0000-000000000001");
@@ -36,33 +33,13 @@ public sealed class CommunicationLossAlarmTests
         Directory.CreateDirectory(tempDir);
         try
         {
-            var postgres = new ContainerBuilder()
-                .WithImage(TestImages.Postgres)
-                .WithEnvironment("POSTGRES_DB", "alpha_test")
-                .WithEnvironment("POSTGRES_USER", "alpha")
-                .WithEnvironment("POSTGRES_PASSWORD", "alpha-pass")
-                .WithPortBinding(5432, true)
-                .WithWaitStrategy(Wait.ForUnixContainer().UntilInternalTcpPortIsAvailable(5432))
-                .Build();
-
-            IContainer nats;
-            try
-            {
-                await postgres.StartAsync();
-                nats = await NatsTestSupport.StartAsync(tempDir);
-            }
-            catch (DockerUnavailableException ex)
-            {
-                await postgres.DisposeAsync();
-                throw SkipException.ForSkip($"Docker is not available for communication-loss integration test: {ex.Message}");
-            }
-
-            await using (postgres)
+            var nats = await ContainerSupport.StartOrSkipAsync(
+                () => NatsTestSupport.StartAsync(tempDir),
+                "communication-loss NATS integration test");
             await using (nats)
             await using (var catalog = await FakeRouteServer.StartAsync())
             {
-                var connectionString =
-                    $"Host={postgres.Hostname};Port={postgres.GetMappedPublicPort(5432)};Database=alpha_test;Username=alpha;Password=alpha-pass";
+                var connectionString = await postgres.CreateDatabaseAsync(nameof(CommunicationLossAlarmTests));
                 await WaitForPostgresAsync(connectionString);
 
                 var natsUrl = NatsTestSupport.Url(nats);
