@@ -24,7 +24,7 @@ spec:
                 name: alpha-scada-secrets
           env:
             - name: ConnectionStrings__Postgres
-              value: Host=postgres;Port=5432;Database=alpha_reporting;Username=alpha;Password=alpha
+              value: Host=postgres;Port=5432;Database=alpha_gateway;Username=alpha;Password=alpha
             - name: Services__Identity
               value: http://identity:8080
             - name: Services__Tenant

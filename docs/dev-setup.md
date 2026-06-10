@@ -38,3 +38,13 @@ docker pull nats:2.12-alpine
 ```
 
 This avoids Docker Desktop doing image pulls while xUnit is trying to start containers.
+
+## Existing Dev Database Volumes
+
+`ops/postgres/init.sql` only runs when the Postgres volume is first created. If your local volume predates the Gateway database split, create the Gateway database manually:
+
+```bash
+docker compose exec postgres psql -U alpha -d alpha_identity -c "CREATE DATABASE alpha_gateway OWNER alpha"
+```
+
+Alternatively recreate the stack with `docker compose down -v` and `docker compose up --build`. Any stale Gateway Wolverine rows left in `alpha_reporting` are harmless after the split.

@@ -14,6 +14,9 @@ WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'alpha_tag_catalog')\g
 SELECT 'CREATE DATABASE alpha_edge OWNER alpha'
 WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'alpha_edge')\gexec
 
+SELECT 'CREATE DATABASE alpha_gateway OWNER alpha'
+WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'alpha_gateway')\gexec
+
 SELECT 'CREATE DATABASE alpha_telemetry OWNER alpha'
 WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'alpha_telemetry')\gexec
 
