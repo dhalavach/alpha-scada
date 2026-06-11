@@ -11,6 +11,15 @@ public static class AlphaMessagingTopology
         return options;
     }
 
+    public static WolverineOptions PublishOutboxRelayedDomainEvent<T>(this WolverineOptions options, string subject)
+    {
+        options.PublishMessage<T>()
+            .ToNatsSubject(subject)
+            .UseJetStream(Topics.DomainStream)
+            .SendInline();
+        return options;
+    }
+
     public static WolverineOptions ListenForDomainEvent(this WolverineOptions options, string subject, string durableName)
     {
         options.ListenToNatsSubject(subject).UseJetStream(Topics.DomainStream, durableName);

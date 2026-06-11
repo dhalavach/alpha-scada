@@ -111,11 +111,55 @@ public sealed class AlarmOutboxTests(PostgresContainerFixture postgres)
                 Assert.Equal(1, firstCount);
                 Assert.Equal(1, await CountDispatchedAsync(connectionString));
                 Assert.Equal(1, await CountStreamMessagesAsync(NatsTestSupport.Url(nats), Topics.DomainStream));
+                Assert.Equal(0, await CountWolverineOutgoingAsync(connectionString));
 
                 await ResetOutboxRowAsync(connectionString, outboxId);
                 await dispatcher.DispatchPendingAsync(CancellationToken.None);
 
                 Assert.Equal(1, await CountStreamMessagesAsync(NatsTestSupport.Url(nats), Topics.DomainStream));
+                await host.StopAsync();
+            }
+        }
+        finally
+        {
+            Directory.Delete(tempDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Dispatcher_reclaims_stale_claims_prunes_old_rows_and_reports_poison_state()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"alpha-alarm-outbox-maintenance-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var nats = await ContainerSupport.StartOrSkipAsync(
+                () => NatsTestSupport.StartAsync(tempDir),
+                "alarm outbox maintenance integration test");
+            await using (nats)
+            {
+                var connectionString = await postgres.CreateDatabaseAsync($"{nameof(AlarmOutboxTests)}Maintenance");
+                await WaitForPostgresAsync(connectionString);
+
+                await using var dataSource = NpgsqlDataSource.Create(connectionString);
+                await new AlarmMigrator(dataSource, NullLogger<AlarmMigrator>.Instance).MigrateAsync(CancellationToken.None);
+                var staleClaimId = await InsertOutboxAsync(connectionString, RaisedEvent());
+                await SetClaimedAtAsync(connectionString, staleClaimId, DateTimeOffset.UtcNow.AddMinutes(-5));
+                await InsertPoisonAsync(connectionString, RaisedEvent(), attempts: 3);
+                await InsertOldDispatchedAsync(connectionString, RaisedEvent());
+
+                using var host = BuildDispatcherHost(connectionString, NatsTestSupport.Url(nats));
+                await host.StartAsync();
+                var dispatcher = host.Services.GetRequiredService<AlarmOutboxDispatcher>();
+                await dispatcher.DispatchPendingAsync(CancellationToken.None);
+
+                Assert.Equal(1, await CountDispatchedAsync(connectionString));
+                Assert.Equal(0, await CountOldDispatchedAsync(connectionString));
+
+                var rendered = new System.Text.StringBuilder();
+                host.Services.GetRequiredService<AlarmOutboxMetrics>().AppendMetrics(rendered, "alarm-test");
+                Assert.Contains("alpha_scada_alarm_outbox_pending{service=\"alarm-test\"} 1", rendered.ToString());
+                Assert.Contains("alpha_scada_alarm_outbox_poison_total{service=\"alarm-test\"} 1", rendered.ToString());
                 await host.StopAsync();
             }
         }
@@ -162,11 +206,12 @@ public sealed class AlarmOutboxTests(PostgresContainerFixture postgres)
             .ConfigureServices((context, services) =>
             {
                 services.AddServiceDatabase(context.Configuration);
+                services.AddSingleton<AlarmOutboxMetrics>();
                 services.AddSingleton<AlarmOutboxDispatcher>();
             })
             .UseAlphaMessaging("alarm-outbox-dispatcher-test", options =>
             {
-                options.PublishMessage<AlarmRaised>().ToNatsSubject(Topics.AlarmRaisedEvent).UseJetStream(Topics.DomainStream);
+                options.PublishOutboxRelayedDomainEvent<AlarmRaised>(Topics.AlarmRaisedEvent);
             })
             .Build();
     }
@@ -207,6 +252,49 @@ public sealed class AlarmOutboxTests(PostgresContainerFixture postgres)
             where id = @id
             """, connection);
         command.Parameters.AddWithValue("id", outboxId);
+        await command.ExecuteNonQueryAsync();
+    }
+
+    private static async Task SetClaimedAtAsync(string connectionString, Guid outboxId, DateTimeOffset claimedAt)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand("""
+            update alarm_outbox
+            set claimed_at_utc = @claimed_at
+            where id = @id
+            """, connection);
+        command.Parameters.AddWithValue("id", outboxId);
+        command.Parameters.AddWithValue("claimed_at", claimedAt);
+        await command.ExecuteNonQueryAsync();
+    }
+
+    private static async Task InsertPoisonAsync(string connectionString, object message, int attempts)
+    {
+        var id = await InsertOutboxAsync(connectionString, message);
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand("""
+            update alarm_outbox
+            set attempts = @attempts
+            where id = @id
+            """, connection);
+        command.Parameters.AddWithValue("id", id);
+        command.Parameters.AddWithValue("attempts", attempts);
+        await command.ExecuteNonQueryAsync();
+    }
+
+    private static async Task InsertOldDispatchedAsync(string connectionString, object message)
+    {
+        var id = await InsertOutboxAsync(connectionString, message);
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand("""
+            update alarm_outbox
+            set dispatched_at_utc = now() - interval '8 days'
+            where id = @id
+            """, connection);
+        command.Parameters.AddWithValue("id", id);
         await command.ExecuteNonQueryAsync();
     }
 
@@ -274,6 +362,31 @@ public sealed class AlarmOutboxTests(PostgresContainerFixture postgres)
         await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync();
         await using var command = new NpgsqlCommand("select count(*) from alarm_outbox where dispatched_at_utc is not null", connection);
+        return Convert.ToInt32(await command.ExecuteScalarAsync());
+    }
+
+    private static async Task<int> CountOldDispatchedAsync(string connectionString)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand("""
+            select count(*)
+            from alarm_outbox
+            where dispatched_at_utc < now() - interval '7 days'
+            """, connection);
+        return Convert.ToInt32(await command.ExecuteScalarAsync());
+    }
+
+    private static async Task<int> CountWolverineOutgoingAsync(string connectionString)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand("""
+            select case
+                when to_regclass('wolverine.wolverine_outgoing_envelopes') is null then 0
+                else (select count(*) from wolverine.wolverine_outgoing_envelopes)
+            end
+            """, connection);
         return Convert.ToInt32(await command.ExecuteScalarAsync());
     }
 

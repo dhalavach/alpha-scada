@@ -44,6 +44,16 @@ public sealed class AlarmMigrator(NpgsqlDataSource dataSource, ILogger<AlarmMigr
             create index if not exists ix_alarm_outbox_pending
                 on alarm_outbox(occurred_at_utc)
                 where dispatched_at_utc is null;
+            """),
+
+        new("003_alarm_outbox_claims", """
+            alter table alarm_outbox
+                add column if not exists claimed_at_utc timestamptz;
+
+            drop index if exists ix_alarm_outbox_pending;
+            create index if not exists ix_alarm_outbox_pending
+                on alarm_outbox(occurred_at_utc)
+                where dispatched_at_utc is null;
             """)
     ];
 }

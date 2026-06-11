@@ -146,6 +146,7 @@ public sealed class CommunicationLossAlarmTests(PostgresContainerFixture postgre
                 services.AddSingleton<AlarmMigrator>();
                 services.AddSingleton<AlarmRepository>();
                 services.AddSingleton<AlarmService>();
+                services.AddSingleton<AlarmOutboxMetrics>();
                 services.AddSingleton<AlarmOutboxDispatcher>();
                 services.AddSingleton<IAlarmOutboxSignal>(provider => provider.GetRequiredService<AlarmOutboxDispatcher>());
                 services.AddHostedService(provider => provider.GetRequiredService<AlarmOutboxDispatcher>());
@@ -160,8 +161,8 @@ public sealed class CommunicationLossAlarmTests(PostgresContainerFixture postgre
             {
                 options.Discovery.IncludeAssembly(typeof(UnitStatusAlarmHandler).Assembly);
                 options.PublishMessage<UnitStatusChanged>().ToNatsSubject(Topics.StatusChangedEvent).UseJetStream(Topics.DomainStream);
-                options.PublishMessage<AlarmRaised>().ToNatsSubject(Topics.AlarmRaisedEvent).UseJetStream(Topics.DomainStream);
-                options.PublishMessage<AlarmCleared>().ToNatsSubject(Topics.AlarmClearedEvent).UseJetStream(Topics.DomainStream);
+                options.PublishOutboxRelayedDomainEvent<AlarmRaised>(Topics.AlarmRaisedEvent);
+                options.PublishOutboxRelayedDomainEvent<AlarmCleared>(Topics.AlarmClearedEvent);
                 options.ListenToNatsSubject(Topics.StatusChangedEvent).UseJetStream(Topics.DomainStream, "comm-loss-test-status");
             })
             .Build();

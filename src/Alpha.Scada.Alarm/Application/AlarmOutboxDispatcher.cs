@@ -16,6 +16,7 @@ public sealed class AlarmOutboxDispatcher(
     NpgsqlDataSource dataSource,
     IMessageBus bus,
     IConfiguration configuration,
+    AlarmOutboxMetrics metrics,
     ILogger<AlarmOutboxDispatcher> logger) : BackgroundService, IAlarmOutboxSignal
 {
     private readonly Channel<bool> wakeups = Channel.CreateBounded<bool>(new BoundedChannelOptions(1)
@@ -26,6 +27,9 @@ public sealed class AlarmOutboxDispatcher(
 
     private int BatchSize => Math.Max(1, configuration.GetValue("AlarmOutbox:BatchSize", 25));
     private int MaxAttempts => Math.Max(1, configuration.GetValue("AlarmOutbox:MaxAttempts", 5));
+    private int RetentionDays => Math.Max(1, configuration.GetValue("AlarmOutbox:RetentionDays", 7));
+    private TimeSpan ClaimTimeout => TimeSpan.FromSeconds(
+        Math.Max(10, configuration.GetValue("AlarmOutbox:ClaimTimeoutSeconds", 120)));
     private TimeSpan SweepInterval => TimeSpan.FromMilliseconds(
         Math.Max(100, configuration.GetValue("AlarmOutbox:SweepIntervalMilliseconds", 1_000)));
 
@@ -55,9 +59,7 @@ public sealed class AlarmOutboxDispatcher(
     public async Task<int> DispatchPendingAsync(CancellationToken cancellationToken)
     {
         var dispatched = 0;
-        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
-        var rows = await LoadPendingAsync(connection, transaction, cancellationToken);
+        var rows = await ClaimPendingAsync(cancellationToken);
 
         foreach (var row in rows)
         {
@@ -65,17 +67,31 @@ public sealed class AlarmOutboxDispatcher(
             {
                 var message = AlarmOutboxEvents.Deserialize(row.EventType, row.Payload);
                 await PublishAsync(message, row.Id, cancellationToken);
-                await MarkDispatchedAsync(connection, transaction, row.Id, cancellationToken);
+                await MarkDispatchedAsync(row.Id, cancellationToken);
                 dispatched++;
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
             }
             catch (Exception ex)
             {
-                await MarkFailedAsync(connection, transaction, row, ex, cancellationToken);
+                await MarkFailedAsync(row, ex, cancellationToken);
             }
         }
 
-        await transaction.CommitAsync(cancellationToken);
+        await PruneDispatchedAsync(cancellationToken);
+        await RefreshMetricsAsync(cancellationToken);
         return dispatched;
+    }
+
+    private async Task<IReadOnlyCollection<AlarmOutboxRow>> ClaimPendingAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        var rows = await ClaimPendingAsync(connection, transaction, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return rows;
     }
 
     private async Task WaitForNextSweepAsync(CancellationToken cancellationToken)
@@ -88,21 +104,31 @@ public sealed class AlarmOutboxDispatcher(
         }
     }
 
-    private async Task<IReadOnlyCollection<AlarmOutboxRow>> LoadPendingAsync(
+    private async Task<IReadOnlyCollection<AlarmOutboxRow>> ClaimPendingAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         CancellationToken cancellationToken)
     {
         await using var command = new NpgsqlCommand("""
-            select id, event_type, payload::text, attempts
-            from alarm_outbox
-            where dispatched_at_utc is null and attempts < @max_attempts
-            order by occurred_at_utc
-            limit @batch_size
-            for update skip locked
+            with candidates as (
+                select id
+                from alarm_outbox
+                where dispatched_at_utc is null
+                  and attempts < @max_attempts
+                  and (claimed_at_utc is null or claimed_at_utc < now() - @claim_timeout)
+                order by occurred_at_utc
+                limit @batch_size
+                for update skip locked
+            )
+            update alarm_outbox outbox
+            set claimed_at_utc = now()
+            from candidates
+            where outbox.id = candidates.id
+            returning outbox.id, outbox.event_type, outbox.payload::text, outbox.attempts
             """, connection, transaction);
         command.Parameters.AddWithValue("max_attempts", MaxAttempts);
         command.Parameters.AddWithValue("batch_size", BatchSize);
+        command.Parameters.AddWithValue("claim_timeout", ClaimTimeout);
 
         var rows = new List<AlarmOutboxRow>();
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -135,37 +161,35 @@ public sealed class AlarmOutboxDispatcher(
         };
     }
 
-    private static async Task MarkDispatchedAsync(
-        NpgsqlConnection connection,
-        NpgsqlTransaction transaction,
+    private async Task MarkDispatchedAsync(
         Guid id,
         CancellationToken cancellationToken)
     {
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var command = new NpgsqlCommand("""
             update alarm_outbox
-            set dispatched_at_utc = now(), last_error = null
+            set dispatched_at_utc = now(), claimed_at_utc = null, last_error = null
             where id = @id
-            """, connection, transaction);
+            """, connection);
         command.Parameters.AddWithValue("id", id);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     private async Task MarkFailedAsync(
-        NpgsqlConnection connection,
-        NpgsqlTransaction transaction,
         AlarmOutboxRow row,
         Exception exception,
         CancellationToken cancellationToken)
     {
         var attempts = row.Attempts + 1;
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var command = new NpgsqlCommand("""
             update alarm_outbox
-            set attempts = @attempts, last_error = @last_error
+            set attempts = @attempts, claimed_at_utc = null, last_error = @last_error
             where id = @id
-            """, connection, transaction);
+            """, connection);
         command.Parameters.AddWithValue("id", row.Id);
         command.Parameters.AddWithValue("attempts", attempts);
-        command.Parameters.AddWithValue("last_error", exception.Message);
+        command.Parameters.AddWithValue("last_error", Truncate(exception.Message, 2_000));
         await command.ExecuteNonQueryAsync(cancellationToken);
 
         if (attempts >= MaxAttempts)
@@ -177,6 +201,35 @@ public sealed class AlarmOutboxDispatcher(
             logger.LogWarning(exception, "Alarm outbox row {OutboxId} failed on attempt {Attempts}.", row.Id, attempts);
         }
     }
+
+    private async Task PruneDispatchedAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("""
+            delete from alarm_outbox
+            where dispatched_at_utc < now() - @retention
+            """, connection);
+        command.Parameters.AddWithValue("retention", TimeSpan.FromDays(RetentionDays));
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private async Task RefreshMetricsAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("""
+            select
+                count(*) filter (where dispatched_at_utc is null),
+                count(*) filter (where dispatched_at_utc is null and attempts >= @max_attempts)
+            from alarm_outbox
+            """, connection);
+        command.Parameters.AddWithValue("max_attempts", MaxAttempts);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        await reader.ReadAsync(cancellationToken);
+        metrics.Update(reader.GetInt64(0), reader.GetInt64(1));
+    }
+
+    private static string Truncate(string value, int maximumLength) =>
+        value.Length <= maximumLength ? value : value[..maximumLength];
 
     private sealed record AlarmOutboxRow(Guid Id, string EventType, string Payload, int Attempts);
 }

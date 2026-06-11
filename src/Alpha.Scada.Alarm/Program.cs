@@ -12,6 +12,8 @@ builder.Services.AddServiceDatabase(builder.Configuration);
 builder.Services.AddAlphaMigrator<AlarmMigrator>();
 builder.Services.AddSingleton<AlarmRepository>();
 builder.Services.AddSingleton<AlarmService>();
+builder.Services.AddSingleton<AlarmOutboxMetrics>();
+builder.Services.AddSingleton<IAlphaMetricsProvider>(provider => provider.GetRequiredService<AlarmOutboxMetrics>());
 builder.Services.AddSingleton<AlarmOutboxDispatcher>();
 builder.Services.AddSingleton<IAlarmOutboxSignal>(provider => provider.GetRequiredService<AlarmOutboxDispatcher>());
 builder.Services.AddHostedService(provider => provider.GetRequiredService<AlarmOutboxDispatcher>());
