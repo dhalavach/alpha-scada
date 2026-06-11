@@ -38,7 +38,7 @@ public sealed class TelemetryIngestionMetrics : IAlphaMetricsProvider
 
     public void AppendMetrics(StringBuilder metrics, string serviceName)
     {
-        var serviceLabel = EscapeLabel(serviceName);
+        var serviceLabel = PrometheusLabels.Escape(serviceName);
         metrics.AppendLine("# HELP alpha_scada_telemetry_ingestion_in_flight Telemetry messages currently being processed");
         metrics.AppendLine("# TYPE alpha_scada_telemetry_ingestion_in_flight gauge");
         metrics.AppendLine(CultureInfo.InvariantCulture, $"alpha_scada_telemetry_ingestion_in_flight{{service=\"{serviceLabel}\"}} {Interlocked.Read(ref inFlight)}");
@@ -128,11 +128,6 @@ public sealed class TelemetryIngestionMetrics : IAlphaMetricsProvider
         metrics.AppendLine(
             CultureInfo.InvariantCulture,
             $"alpha_scada_telemetry_ingestion_messages_total{{service=\"{serviceLabel}\",outcome=\"{outcome}\"}} {Interlocked.Read(ref value)}");
-
-    private static string EscapeLabel(string value) =>
-        value.Replace("\\", "\\\\", StringComparison.Ordinal)
-            .Replace("\"", "\\\"", StringComparison.Ordinal)
-            .Replace("\n", "\\n", StringComparison.Ordinal);
 
     public readonly struct TelemetryIngestionMeasurement(TelemetryIngestionMetrics owner, long startedTimestamp)
     {

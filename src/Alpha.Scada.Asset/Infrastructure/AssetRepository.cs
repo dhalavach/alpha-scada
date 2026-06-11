@@ -7,7 +7,6 @@ namespace Alpha.Scada.Asset.Infrastructure;
 
 public sealed class AssetRepository(NpgsqlDataSource dataSource)
 {
-
     public async Task<IReadOnlyCollection<SiteDto>> GetSitesAsync(CurrentUserDto user, CancellationToken cancellationToken)
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
@@ -92,15 +91,6 @@ public sealed class AssetRepository(NpgsqlDataSource dataSource)
             : null;
     }
 
-    public async Task<UnitDto?> SetUnitOnlineAsync(Guid unitId, CancellationToken cancellationToken)
-    {
-        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
-        var unit = await SetUnitOnlineAsync(connection, transaction, unitId, cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
-        return unit;
-    }
-
     public async Task<UnitDto?> SetUnitOnlineAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
@@ -128,17 +118,6 @@ public sealed class AssetRepository(NpgsqlDataSource dataSource)
             """, connection, transaction);
         command.Parameters.AddWithValue("unit_id", unitId);
         return (await ReadUnitsAsync(command, cancellationToken)).FirstOrDefault();
-    }
-
-    public async Task<IReadOnlyCollection<UnitStatusChange>> MarkStaleUnitsOfflineAsync(
-        int minutes,
-        CancellationToken cancellationToken)
-    {
-        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
-        var changed = await MarkStaleUnitsOfflineAsync(connection, transaction, minutes, cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
-        return changed;
     }
 
     public async Task<IReadOnlyCollection<UnitStatusChange>> MarkStaleUnitsOfflineAsync(

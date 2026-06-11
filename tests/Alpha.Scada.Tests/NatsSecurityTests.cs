@@ -243,7 +243,6 @@ public sealed class NatsSecurityTests
             Subjects =
             [
                 Topics.TelemetryWildcard,
-                Topics.StatusWildcard,
                 Topics.SparkplugWildcard
             ]
         });

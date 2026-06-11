@@ -24,7 +24,7 @@ public sealed class ThresholdAlarmEvaluationTests(PostgresContainerFixture postg
         var repository = new AlarmRepository(dataSource);
 
         // Batch with one breaching tag (raise) and one healthy tag (no-op) in a single set-based call.
-        var firstBreach = await repository.EvaluateAsync(
+        var firstBreach = await EvaluateAsync(dataSource, repository,
             Request(Breaching(HighTagId), Healthy(NormalTagId)),
             CancellationToken.None);
         Assert.Single(firstBreach.Raised);
@@ -33,14 +33,14 @@ public sealed class ThresholdAlarmEvaluationTests(PostgresContainerFixture postg
         Assert.Equal(1, await CountActiveAsync(connectionString));
 
         // Repeat breach for the same tag must not raise a second active alarm (atomic de-dup).
-        var repeatBreach = await repository.EvaluateAsync(
+        var repeatBreach = await EvaluateAsync(dataSource, repository,
             Request(Breaching(HighTagId)),
             CancellationToken.None);
         Assert.Empty(repeatBreach.Raised);
         Assert.Equal(1, await CountActiveAsync(connectionString));
 
         // Tag returns to range: the open alarm is cleared.
-        var recovery = await repository.EvaluateAsync(
+        var recovery = await EvaluateAsync(dataSource, repository,
             Request(Healthy(HighTagId)),
             CancellationToken.None);
         Assert.Single(recovery.Cleared);
@@ -51,6 +51,19 @@ public sealed class ThresholdAlarmEvaluationTests(PostgresContainerFixture postg
 
     private static AlarmEvaluationRequest Request(params ResolvedTelemetrySample[] samples) =>
         new(TenantId, UnitId, "Combined Heat and Power Unit 001", samples);
+
+    private static async Task<AlarmChanges> EvaluateAsync(
+        NpgsqlDataSource dataSource,
+        AlarmRepository repository,
+        AlarmEvaluationRequest request,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        var changes = await repository.EvaluateAsync(connection, transaction, request, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return changes;
+    }
 
     // value 150 is above the high threshold of 100 -> alarm.
     private static ResolvedTelemetrySample Breaching(Guid tagId) =>

@@ -43,9 +43,6 @@ public sealed class AssetService(
         return unit is null ? null : ToStatusChanged(unit, route);
     }
 
-    public Task<UnitStatusChanged?> SetUnitOnlineAsync(Guid unitId, CancellationToken cancellationToken) =>
-        SetUnitOnlineAsync(unitId, null, cancellationToken);
-
     public async Task<IReadOnlyCollection<UnitStatusChanged>> MarkStaleUnitsOfflineAsync(int minutes, CancellationToken cancellationToken)
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);

@@ -2,6 +2,8 @@ using Alpha.Scada.Contracts;
 using Alpha.Scada.Alarm.Contracts;
 using Alpha.Scada.Identity.Infrastructure;
 using Alpha.Scada.ServiceDefaults;
+using Alpha.Scada.ServiceDefaults.Messaging;
+using Alpha.Scada.Contracts.Messaging;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using System.Text.Json;
@@ -86,5 +88,36 @@ public sealed class ContractTests
         Assert.Contains("\"alarmId\"", json);
         Assert.DoesNotContain("AlarmId", json);
         Assert.Equal(message, roundTrip);
+    }
+
+    [Fact]
+    public void Telemetry_v1_contract_preserves_the_edge_wire_shape()
+    {
+        var timestamp = DateTimeOffset.Parse("2026-06-11T12:00:00Z");
+        var envelope = new TelemetryEnvelopeV1(
+            TelemetryEnvelopeV1.SchemaVersion,
+            "chp-demo-001",
+            timestamp,
+            [new TelemetrySampleV1("engine.output_kw", 42.5, "good", timestamp)]);
+
+        var json = JsonSerializer.Serialize(envelope, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+        Assert.Contains("\"schemaVersion\":\"1.0\"", json);
+        Assert.Contains("\"unitKey\":\"chp-demo-001\"", json);
+        Assert.Contains("\"tagKey\":\"engine.output_kw\"", json);
+    }
+
+    [Fact]
+    public void Deterministic_message_ids_are_stable_and_subject_scoped()
+    {
+        ReadOnlySpan<byte> payload = """{"value":42}"""u8;
+
+        var first = MessageIds.Deterministic("alpha.demo.site.unit.telemetry", payload);
+        var repeat = MessageIds.Deterministic("alpha.demo.site.unit.telemetry", payload);
+        var otherSubject = MessageIds.Deterministic("alpha.demo.site.other.telemetry", payload);
+
+        Assert.Equal(first, repeat);
+        Assert.NotEqual(first, otherSubject);
+        Assert.True(Guid.TryParse(first, out _));
     }
 }

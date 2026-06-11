@@ -1,6 +1,5 @@
-using System.Security.Cryptography;
 using System.Text.Json;
-using Alpha.Scada.Contracts;
+using Alpha.Scada.Contracts.Messaging;
 using Alpha.Scada.ServiceDefaults.Messaging;
 using NATS.Client.Core;
 using NATS.Client.JetStream;
@@ -33,9 +32,13 @@ public sealed class ChpUnitSimulatorWorker(
             {
                 var now = DateTimeOffset.UtcNow;
                 var wave = Math.Sin(now.ToUnixTimeSeconds() / 30.0);
-                var envelope = new EdgeTelemetryEnvelope("1.0", "chp-demo-001", now, CreateSamples(now, wave));
+                var envelope = new TelemetryEnvelopeV1(
+                    TelemetryEnvelopeV1.SchemaVersion,
+                    "chp-demo-001",
+                    now,
+                    CreateSamples(now, wave));
                 var payload = JsonSerializer.SerializeToUtf8Bytes(envelope, jsonOptions);
-                var messageId = DeterministicMessageId(subject, payload);
+                var messageId = MessageIds.Deterministic(subject, payload);
                 var headers = new NatsHeaders
                 {
                     [RawTelemetryHeaders.NatsMessageId] = messageId
@@ -76,7 +79,7 @@ public sealed class ChpUnitSimulatorWorker(
         };
     }
 
-    private IReadOnlyCollection<EdgeTelemetrySample> CreateSamples(DateTimeOffset timestamp, double wave)
+    private IReadOnlyCollection<TelemetrySampleV1> CreateSamples(DateTimeOffset timestamp, double wave)
     {
         return
         [
@@ -98,21 +101,10 @@ public sealed class ChpUnitSimulatorWorker(
         ];
     }
 
-    private EdgeTelemetrySample Sample(string key, double center, double spread, double wave, DateTimeOffset timestamp)
+    private TelemetrySampleV1 Sample(string key, double center, double spread, double wave, DateTimeOffset timestamp)
     {
         var noise = (random.NextDouble() - 0.5) * spread;
         var value = center + (spread * 0.6 * wave) + noise;
-        return new EdgeTelemetrySample(key, Math.Round(value, 2), "good", timestamp);
-    }
-
-    private static string DeterministicMessageId(string subject, ReadOnlySpan<byte> payload)
-    {
-        var subjectBytes = System.Text.Encoding.UTF8.GetBytes(subject);
-        var buffer = new byte[subjectBytes.Length + 1 + payload.Length];
-        subjectBytes.CopyTo(buffer);
-        buffer[subjectBytes.Length] = 0x1f;
-        payload.CopyTo(buffer.AsSpan(subjectBytes.Length + 1));
-        var hash = SHA256.HashData(buffer);
-        return new Guid(hash.AsSpan(0, 16)).ToString("D");
+        return new TelemetrySampleV1(key, Math.Round(value, 2), "good", timestamp);
     }
 }

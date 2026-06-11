@@ -51,9 +51,6 @@ public sealed class AlarmService(
         return raised;
     }
 
-    public Task<AlarmRaised?> RaiseCommunicationLostAsync(UnitDto unit, CancellationToken cancellationToken) =>
-        RaiseCommunicationLostAsync(unit, null, cancellationToken);
-
     public async Task<IReadOnlyCollection<AlarmCleared>> ClearCommunicationLostAsync(
         Guid unitId,
         UnitRouteKeys route,

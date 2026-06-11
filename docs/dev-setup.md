@@ -48,3 +48,5 @@ docker compose exec postgres psql -U alpha -d alpha_identity -c "CREATE DATABASE
 ```
 
 Alternatively recreate the stack with `docker compose down -v` and `docker compose up --build`. Any stale Gateway Wolverine rows left in `alpha_reporting` are harmless after the split.
+
+Existing development volumes may retain the retired `edge_devices` table. It is harmless; remove it with `drop table if exists edge_devices` in `alpha_edge`, or recreate the development volume.

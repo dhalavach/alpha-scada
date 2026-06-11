@@ -20,7 +20,7 @@ public static class MinimalApi
         IEnumerable<IAlphaMetricsProvider>? metricProviders = null)
     {
         var metricName = serviceName.Replace("-", "_");
-        var serviceLabel = EscapeLabel(serviceName);
+        var serviceLabel = PrometheusLabels.Escape(serviceName);
         var errorQueueDepth = await CountIfTableExistsAsync(dataSource, "wolverine.wolverine_dead_letters", cancellationToken);
         var telemetrySamples = await CountIfTableExistsAsync(dataSource, "public.telemetry_samples", cancellationToken);
 
@@ -66,8 +66,4 @@ public static class MinimalApi
         return Convert.ToInt64(await count.ExecuteScalarAsync(cancellationToken), CultureInfo.InvariantCulture);
     }
 
-    private static string EscapeLabel(string value) =>
-        value.Replace("\\", "\\\\", StringComparison.Ordinal)
-            .Replace("\"", "\\\"", StringComparison.Ordinal)
-            .Replace("\n", "\\n", StringComparison.Ordinal);
 }

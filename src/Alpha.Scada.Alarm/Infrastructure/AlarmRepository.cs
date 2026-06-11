@@ -9,16 +9,6 @@ namespace Alpha.Scada.Alarm.Infrastructure;
 
 public sealed class AlarmRepository(NpgsqlDataSource dataSource)
 {
-
-    public async Task<AlarmChanges> EvaluateAsync(AlarmEvaluationRequest request, CancellationToken cancellationToken)
-    {
-        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
-        var changes = await EvaluateAsync(connection, transaction, request, cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
-        return changes;
-    }
-
     public async Task<AlarmChanges> EvaluateAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
@@ -89,15 +79,6 @@ public sealed class AlarmRepository(NpgsqlDataSource dataSource)
         return new AlarmChanges(raised, cleared);
     }
 
-    public async Task<AlarmDto?> RaiseCommunicationLostAsync(UnitDto unit, CancellationToken cancellationToken)
-    {
-        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
-        var alarm = await RaiseCommunicationLostAsync(connection, transaction, unit, cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
-        return alarm;
-    }
-
     public async Task<AlarmDto?> RaiseCommunicationLostAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
@@ -161,15 +142,6 @@ public sealed class AlarmRepository(NpgsqlDataSource dataSource)
         command.Parameters.AddWithValue("tenant_id", user.TenantId);
         command.Parameters.AddWithValue("is_support", RoleRules.IsSupport(user.Role));
         return await ReadAlarmAsync(command, cancellationToken);
-    }
-
-    public async Task<AlarmDto?> AcknowledgeAsync(Guid alarmId, CurrentUserDto user, CancellationToken cancellationToken)
-    {
-        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
-        var alarm = await AcknowledgeAsync(connection, transaction, alarmId, user, cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
-        return alarm;
     }
 
     public async Task<AlarmDto?> AcknowledgeAsync(

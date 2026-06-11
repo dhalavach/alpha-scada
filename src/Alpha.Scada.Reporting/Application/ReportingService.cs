@@ -9,24 +9,6 @@ public sealed class ReportingService(
     IHttpClientFactory httpClientFactory,
     ReportingRepository repository)
 {
-    public async Task<MonthlyReportDto> RunMonthlyAsync(ReportRunRequest request, CurrentUserDto user, string authorizationHeader, CancellationToken cancellationToken)
-    {
-        var period = string.IsNullOrWhiteSpace(request.Period) ? DateTimeOffset.UtcNow.ToString("yyyy-MM") : request.Period;
-        var asset = httpClientFactory.CreateClient(AlphaServiceClients.Asset);
-        var unitRequest = new HttpRequestMessage(HttpMethod.Get, $"/internal/v1/units/{request.UnitId}");
-        unitRequest.ForwardAuthorization(authorizationHeader);
-        var unitResponse = await asset.SendAsync(unitRequest, cancellationToken);
-        if (!unitResponse.IsSuccessStatusCode)
-        {
-            throw new InvalidOperationException("Unit not found or not visible to the current user.");
-        }
-
-        var unit = await unitResponse.Content.ReadFromJsonAsync<UnitDto>(cancellationToken)
-            ?? throw new InvalidOperationException("Unit not found.");
-
-        return await GenerateMonthlyAsync(unit.TenantId, request.UnitId, period, cancellationToken);
-    }
-
     public Task<MonthlyReportDto> RunQueuedMonthlyAsync(Guid tenantId, Guid unitId, string period, CancellationToken cancellationToken) =>
         GenerateMonthlyAsync(tenantId, unitId, period, cancellationToken);
 

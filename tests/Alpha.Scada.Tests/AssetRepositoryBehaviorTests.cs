@@ -68,8 +68,8 @@ public sealed class AssetRepositoryBehaviorTests(PostgresContainerFixture postgr
             var repository = new AssetRepository(dataSource);
             await MakeUnitStaleAsync(connectionString, UnitId);
 
-            var changed = await repository.MarkStaleUnitsOfflineAsync(2, CancellationToken.None);
-            var changedAgain = await repository.MarkStaleUnitsOfflineAsync(2, CancellationToken.None);
+            var changed = await MarkStaleUnitsOfflineAsync(dataSource, repository, 2);
+            var changedAgain = await MarkStaleUnitsOfflineAsync(dataSource, repository, 2);
 
             Assert.Single(changed);
             Assert.Empty(changedAgain);
@@ -89,7 +89,7 @@ public sealed class AssetRepositoryBehaviorTests(PostgresContainerFixture postgr
             await SetUnitStateAsync(connectionString, UnitId, "online", DateTimeOffset.UtcNow.AddMinutes(-10));
             var before = await LastSeenAsync(connectionString, UnitId);
 
-            var changed = await repository.SetUnitOnlineAsync(UnitId, CancellationToken.None);
+            var changed = await SetUnitOnlineAsync(dataSource, repository, UnitId);
             var after = await LastSeenAsync(connectionString, UnitId);
 
             Assert.Null(changed);
@@ -107,7 +107,7 @@ public sealed class AssetRepositoryBehaviorTests(PostgresContainerFixture postgr
             var repository = new AssetRepository(dataSource);
             await SetUnitStateAsync(connectionString, UnitId, "offline", DateTimeOffset.UtcNow.AddMinutes(-10));
 
-            var changed = await repository.SetUnitOnlineAsync(UnitId, CancellationToken.None);
+            var changed = await SetUnitOnlineAsync(dataSource, repository, UnitId);
 
             Assert.NotNull(changed);
             Assert.Equal("online", changed.Status);
@@ -117,6 +117,34 @@ public sealed class AssetRepositoryBehaviorTests(PostgresContainerFixture postgr
 
     private static CurrentUserDto User(Guid tenantId, string role) =>
         new(Guid.NewGuid(), tenantId, "user@example.test", "User", role);
+
+    private static async Task<UnitDto?> SetUnitOnlineAsync(
+        NpgsqlDataSource dataSource,
+        AssetRepository repository,
+        Guid unitId)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync();
+        await using var transaction = await connection.BeginTransactionAsync();
+        var unit = await repository.SetUnitOnlineAsync(connection, transaction, unitId, CancellationToken.None);
+        await transaction.CommitAsync();
+        return unit;
+    }
+
+    private static async Task<IReadOnlyCollection<AssetRepository.UnitStatusChange>> MarkStaleUnitsOfflineAsync(
+        NpgsqlDataSource dataSource,
+        AssetRepository repository,
+        int minutes)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync();
+        await using var transaction = await connection.BeginTransactionAsync();
+        var changes = await repository.MarkStaleUnitsOfflineAsync(
+            connection,
+            transaction,
+            minutes,
+            CancellationToken.None);
+        await transaction.CommitAsync();
+        return changes;
+    }
 
     private static async Task SetUnitStateAsync(string connectionString, Guid unitId, string status, DateTimeOffset lastSeenUtc)
     {

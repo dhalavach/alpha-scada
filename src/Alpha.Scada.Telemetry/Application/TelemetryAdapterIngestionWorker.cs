@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using Alpha.Scada.ServiceDefaults.Messaging;
 using Alpha.Scada.Telemetry.Application.Messaging;
@@ -290,13 +288,7 @@ public sealed class TelemetryAdapterIngestionWorker(
             return value;
         }
 
-        var subjectBytes = Encoding.UTF8.GetBytes(subject);
-        var buffer = new byte[subjectBytes.Length + 1 + payload.Length];
-        subjectBytes.CopyTo(buffer);
-        buffer[subjectBytes.Length] = 0x1f;
-        payload.Span.CopyTo(buffer.AsSpan(subjectBytes.Length + 1));
-        var hash = SHA256.HashData(buffer);
-        return new Guid(hash.AsSpan(0, 16)).ToString("D");
+        return MessageIds.Deterministic(subject, payload.Span);
     }
 
 }
