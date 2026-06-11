@@ -85,7 +85,7 @@ public static class JwtTokenServiceRegistration
     public static IServiceCollection AddJwtTokenService(this IServiceCollection services, IConfiguration configuration)
     {
         _ = JwtTokenService.GetSigningSecret(configuration);
-        services.TryAddSingleton<JwtTokenService>();
+        services.TryAddSingleton(_ => new JwtTokenService(configuration));
         return services;
     }
 }
