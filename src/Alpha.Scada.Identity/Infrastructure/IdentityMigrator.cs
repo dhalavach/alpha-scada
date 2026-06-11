@@ -18,8 +18,8 @@ public sealed class IdentityMigrator(
 
     protected override async Task SeedAsync(NpgsqlConnection connection, CancellationToken cancellationToken)
     {
-        var seedDemoUsers = configuration.GetValue<bool?>("Seed:DemoUsers") ?? environment.IsDevelopment();
-        if (!seedDemoUsers)
+        var seedDemoData = configuration.GetValue<bool?>("Seed:DemoData") ?? environment.IsDevelopment();
+        if (!seedDemoData)
         {
             await EnsureBootstrapAdminAsync(connection, cancellationToken);
             return;

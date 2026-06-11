@@ -8,8 +8,6 @@ using Alpha.Scada.Tenant.Infrastructure;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.FileProviders;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
 
@@ -28,7 +26,11 @@ public sealed class BackendRepositoryTests(PostgresContainerFixture postgres)
         await WithPostgresAsync(async connectionString =>
         {
             await using var dataSource = NpgsqlDataSource.Create(connectionString);
-            await new TenantMigrator(dataSource, NullLogger<TenantMigrator>.Instance).MigrateAsync(CancellationToken.None);
+            await new TenantMigrator(
+                dataSource,
+                DemoDataConfiguration(),
+                new TestHostEnvironment(),
+                NullLogger<TenantMigrator>.Instance).MigrateAsync(CancellationToken.None);
             var repository = new TenantRepository(dataSource);
 
             var viewerTenants = await repository.GetTenantsAsync(User(TenantId, Roles.Viewer), CancellationToken.None);
@@ -49,7 +51,11 @@ public sealed class BackendRepositoryTests(PostgresContainerFixture postgres)
         await WithPostgresAsync(async connectionString =>
         {
             await using var dataSource = NpgsqlDataSource.Create(connectionString);
-            await new TagCatalogMigrator(dataSource, NullLogger<TagCatalogMigrator>.Instance).MigrateAsync(CancellationToken.None);
+            await new TagCatalogMigrator(
+                dataSource,
+                DemoDataConfiguration(),
+                new TestHostEnvironment(),
+                NullLogger<TagCatalogMigrator>.Instance).MigrateAsync(CancellationToken.None);
             var repository = new TagCatalogRepository(dataSource);
 
             var visible = await repository.GetTagsForUnitAsync(UnitId, User(TenantId, Roles.Viewer), CancellationToken.None);
@@ -74,13 +80,13 @@ public sealed class BackendRepositoryTests(PostgresContainerFixture postgres)
                 .AddInMemoryCollection(new Dictionary<string, string?>
                 {
                     ["Jwt:Secret"] = "test-secret-test-secret-test-secret-32",
-                    ["Seed:DemoUsers"] = "true"
+                    ["Seed:DemoData"] = "true"
                 })
                 .Build();
             await new IdentityMigrator(
                 dataSource,
                 configuration,
-                new FakeHostEnvironment(),
+                new TestHostEnvironment(),
                 NullLogger<IdentityMigrator>.Instance).MigrateAsync(CancellationToken.None);
             var repository = new IdentityRepository(dataSource);
             var service = new AuthService(repository, new JwtTokenService(configuration));
@@ -142,6 +148,14 @@ public sealed class BackendRepositoryTests(PostgresContainerFixture postgres)
     private static CurrentUserDto User(Guid tenantId, string role) =>
         new(Guid.NewGuid(), tenantId, "user@example.test", "User", role);
 
+    private static IConfiguration DemoDataConfiguration() =>
+        new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Seed:DemoData"] = "true"
+            })
+            .Build();
+
     private static MonthlyReportDto Report(Guid tenantId, Guid unitId, string period, double electricalKwh) =>
         new(
             Guid.Empty,
@@ -190,11 +204,4 @@ public sealed class BackendRepositoryTests(PostgresContainerFixture postgres)
         return Convert.ToInt32(await command.ExecuteScalarAsync());
     }
 
-    private sealed class FakeHostEnvironment : IHostEnvironment
-    {
-        public string EnvironmentName { get; set; } = Environments.Development;
-        public string ApplicationName { get; set; } = "Alpha.Scada.Tests";
-        public string ContentRootPath { get; set; } = Directory.GetCurrentDirectory();
-        public IFileProvider ContentRootFileProvider { get; set; } = new NullFileProvider();
-    }
 }

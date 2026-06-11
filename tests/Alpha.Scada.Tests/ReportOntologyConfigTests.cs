@@ -8,6 +8,7 @@ using Alpha.Scada.ServiceDefaults;
 using Alpha.Scada.TagCatalog.Infrastructure;
 using Alpha.Scada.Telemetry.Infrastructure;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Configuration;
 using Npgsql;
 
 namespace Alpha.Scada.Tests;
@@ -24,7 +25,11 @@ public sealed class ReportOntologyConfigTests(PostgresContainerFixture postgres)
         await WithPostgresAsync(async connectionString =>
         {
             await using var dataSource = NpgsqlDataSource.Create(connectionString);
-            await new TagCatalogMigrator(dataSource, NullLogger<TagCatalogMigrator>.Instance).MigrateAsync(CancellationToken.None);
+            await new TagCatalogMigrator(
+                dataSource,
+                DemoDataConfiguration(),
+                new TestHostEnvironment(),
+                NullLogger<TagCatalogMigrator>.Instance).MigrateAsync(CancellationToken.None);
             var repository = new TagCatalogRepository(dataSource);
 
             var profile = await repository.GetReportProfileAsync(TenantId, UnitId, CancellationToken.None);
@@ -32,8 +37,6 @@ public sealed class ReportOntologyConfigTests(PostgresContainerFixture postgres)
 
             Assert.NotNull(profile);
             Assert.Null(missing);
-            Assert.Equal(99.5, profile.AvailabilityNoAlarmsPercent);
-            Assert.Equal(98.5, profile.AvailabilityWithAlarmsPercent);
             Assert.Equal(0.00045, profile.BiocharYieldM3PerKg);
             Assert.Contains(profile.MetricBindings, binding => binding.MetricKey == ReportMetricKeys.ElectricalKwh);
             Assert.Contains(profile.MetricBindings, binding => binding.MetricKey == ReportMetricKeys.ThermalKwh);
@@ -128,7 +131,7 @@ public sealed class ReportOntologyConfigTests(PostgresContainerFixture postgres)
     }
 
     [Fact]
-    public async Task Reporting_service_uses_profile_factors_for_availability_and_biochar()
+    public async Task Reporting_service_computes_calendar_availability_and_uses_biochar_factor()
     {
         await WithPostgresAsync(async connectionString =>
         {
@@ -137,8 +140,6 @@ public sealed class ReportOntologyConfigTests(PostgresContainerFixture postgres)
             var profile = new ReportProfileDto(
                 TenantId,
                 UnitId,
-                97.7,
-                91.2,
                 0.002,
                 [Binding(ReportMetricKeys.ElectricalKwh, Guid.NewGuid(), "sum_per_minute", null)]);
             var handler = new RoutingJsonHandler(request =>
@@ -151,7 +152,7 @@ public sealed class ReportOntologyConfigTests(PostgresContainerFixture postgres)
 
                 if (path == $"/internal/v1/telemetry/units/{UnitId}/report-aggregate")
                 {
-                    return new ReportAggregateDto(10, 20, 30, 500);
+                    return new ReportAggregateDto(10, 20, 360, 500);
                 }
 
                 if (path == "/internal/v1/alarms/count")
@@ -161,14 +162,55 @@ public sealed class ReportOntologyConfigTests(PostgresContainerFixture postgres)
 
                 return null;
             });
-            var service = new ReportingService(new StaticHttpClientFactory(handler), new ReportingRepository(dataSource));
+            var service = new ReportingService(
+                new StaticHttpClientFactory(handler),
+                new ReportingRepository(dataSource),
+                new FixedTimeProvider(new DateTimeOffset(2026, 7, 1, 0, 0, 0, TimeSpan.Zero)));
 
             var report = await service.RunQueuedMonthlyAsync(TenantId, UnitId, "2026-06", CancellationToken.None);
 
-            Assert.Equal(91.2, report.AvailabilityPercent);
+            Assert.Equal(50, report.AvailabilityPercent);
             Assert.Equal(1.0, report.EstimatedBiocharM3);
             Assert.Single(handler.AggregateRequests);
             Assert.Equal(profile.MetricBindings, handler.AggregateRequests.Single().MetricBindings);
+        });
+    }
+
+    [Fact]
+    public async Task Reporting_service_uses_elapsed_hours_for_the_current_month_and_rejects_future_months()
+    {
+        await WithPostgresAsync(async connectionString =>
+        {
+            await using var dataSource = NpgsqlDataSource.Create(connectionString);
+            await new ReportingMigrator(dataSource, NullLogger<ReportingMigrator>.Instance).MigrateAsync(CancellationToken.None);
+            var profile = new ReportProfileDto(
+                TenantId,
+                UnitId,
+                0.002,
+                [Binding(ReportMetricKeys.RuntimeHours, Guid.NewGuid(), "runtime_hours", 0)]);
+            var handler = new RoutingJsonHandler(request =>
+            {
+                var path = request.RequestUri?.AbsolutePath ?? "";
+                return path switch
+                {
+                    var value when value == $"/internal/v1/report-config/units/{UnitId}" => profile,
+                    var value when value == $"/internal/v1/telemetry/units/{UnitId}/report-aggregate" =>
+                        new ReportAggregateDto(10, 20, 180, 500),
+                    "/internal/v1/alarms/count" => 0,
+                    _ => null
+                };
+            });
+            var service = new ReportingService(
+                new StaticHttpClientFactory(handler),
+                new ReportingRepository(dataSource),
+                new FixedTimeProvider(new DateTimeOffset(2026, 6, 16, 0, 0, 0, TimeSpan.Zero)));
+
+            var current = await service.RunQueuedMonthlyAsync(TenantId, UnitId, "2026-06", CancellationToken.None);
+            var future = await Assert.ThrowsAsync<ArgumentException>(
+                () => service.RunQueuedMonthlyAsync(TenantId, UnitId, "2026-07", CancellationToken.None));
+
+            Assert.Equal(50, current.AvailabilityPercent);
+            Assert.Contains("future", future.Message, StringComparison.OrdinalIgnoreCase);
         });
     }
 
@@ -178,10 +220,23 @@ public sealed class ReportOntologyConfigTests(PostgresContainerFixture postgres)
     private static ReportMetricBindingDto Binding(string metricKey, Guid tagId, string aggregationType, double? threshold) =>
         new(metricKey, tagId, aggregationType, 1, threshold);
 
+    private static IConfiguration DemoDataConfiguration() =>
+        new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Seed:DemoData"] = "true"
+            })
+            .Build();
+
     private sealed class StaticHttpClientFactory(HttpMessageHandler handler) : IHttpClientFactory
     {
         public HttpClient CreateClient(string name) =>
             new(handler, disposeHandler: false) { BaseAddress = new Uri($"http://{name}.test") };
+    }
+
+    private sealed class FixedTimeProvider(DateTimeOffset utcNow) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => utcNow;
     }
 
     private sealed class RoutingJsonHandler(Func<HttpRequestMessage, object?> responder) : HttpMessageHandler

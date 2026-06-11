@@ -32,8 +32,6 @@ public sealed record ReportMetricBindingDto(
 public sealed record ReportProfileDto(
     Guid TenantId,
     Guid UnitId,
-    double AvailabilityNoAlarmsPercent,
-    double AvailabilityWithAlarmsPercent,
     double BiocharYieldM3PerKg,
     IReadOnlyCollection<ReportMetricBindingDto> MetricBindings);
 

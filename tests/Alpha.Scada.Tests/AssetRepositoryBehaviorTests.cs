@@ -1,6 +1,7 @@
 using Alpha.Scada.Asset.Infrastructure;
 using Alpha.Scada.Contracts;
 using Alpha.Scada.ServiceDefaults;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
 
@@ -21,7 +22,7 @@ public sealed class AssetRepositoryBehaviorTests(PostgresContainerFixture postgr
         await WithPostgresAsync(async connectionString =>
         {
             await using var dataSource = NpgsqlDataSource.Create(connectionString);
-            await new AssetMigrator(dataSource, NullLogger<AssetMigrator>.Instance).MigrateAsync(CancellationToken.None);
+            await MigrateAsync(dataSource);
             var repository = new AssetRepository(dataSource);
 
             var viewerSites = await repository.GetSitesAsync(User(TenantId, Roles.Viewer), CancellationToken.None);
@@ -42,7 +43,7 @@ public sealed class AssetRepositoryBehaviorTests(PostgresContainerFixture postgr
         await WithPostgresAsync(async connectionString =>
         {
             await using var dataSource = NpgsqlDataSource.Create(connectionString);
-            await new AssetMigrator(dataSource, NullLogger<AssetMigrator>.Instance).MigrateAsync(CancellationToken.None);
+            await MigrateAsync(dataSource);
             var repository = new AssetRepository(dataSource);
 
             var unit = await repository.GetUnitAsync(UnitId, User(TenantId, Roles.Viewer), CancellationToken.None);
@@ -64,7 +65,7 @@ public sealed class AssetRepositoryBehaviorTests(PostgresContainerFixture postgr
         await WithPostgresAsync(async connectionString =>
         {
             await using var dataSource = NpgsqlDataSource.Create(connectionString);
-            await new AssetMigrator(dataSource, NullLogger<AssetMigrator>.Instance).MigrateAsync(CancellationToken.None);
+            await MigrateAsync(dataSource);
             var repository = new AssetRepository(dataSource);
             await MakeUnitStaleAsync(connectionString, UnitId);
 
@@ -84,7 +85,7 @@ public sealed class AssetRepositoryBehaviorTests(PostgresContainerFixture postgr
         await WithPostgresAsync(async connectionString =>
         {
             await using var dataSource = NpgsqlDataSource.Create(connectionString);
-            await new AssetMigrator(dataSource, NullLogger<AssetMigrator>.Instance).MigrateAsync(CancellationToken.None);
+            await MigrateAsync(dataSource);
             var repository = new AssetRepository(dataSource);
             await SetUnitStateAsync(connectionString, UnitId, "online", DateTimeOffset.UtcNow.AddMinutes(-10));
             var before = await LastSeenAsync(connectionString, UnitId);
@@ -103,7 +104,7 @@ public sealed class AssetRepositoryBehaviorTests(PostgresContainerFixture postgr
         await WithPostgresAsync(async connectionString =>
         {
             await using var dataSource = NpgsqlDataSource.Create(connectionString);
-            await new AssetMigrator(dataSource, NullLogger<AssetMigrator>.Instance).MigrateAsync(CancellationToken.None);
+            await MigrateAsync(dataSource);
             var repository = new AssetRepository(dataSource);
             await SetUnitStateAsync(connectionString, UnitId, "offline", DateTimeOffset.UtcNow.AddMinutes(-10));
 
@@ -117,6 +118,21 @@ public sealed class AssetRepositoryBehaviorTests(PostgresContainerFixture postgr
 
     private static CurrentUserDto User(Guid tenantId, string role) =>
         new(Guid.NewGuid(), tenantId, "user@example.test", "User", role);
+
+    private static Task MigrateAsync(NpgsqlDataSource dataSource)
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Seed:DemoData"] = "true"
+            })
+            .Build();
+        return new AssetMigrator(
+            dataSource,
+            configuration,
+            new TestHostEnvironment(),
+            NullLogger<AssetMigrator>.Instance).MigrateAsync(CancellationToken.None);
+    }
 
     private static async Task<UnitDto?> SetUnitOnlineAsync(
         NpgsqlDataSource dataSource,

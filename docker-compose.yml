@@ -55,7 +55,7 @@ services:
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=alpha_identity;Username=alpha;Password=alpha
       Jwt__Secret: ${JWT_SECRET:?JWT_SECRET must be set in .env}
-      Seed__DemoUsers: "true"
+      Seed__DemoData: "true"
     networks:
       - alpha-internal
     depends_on:
@@ -73,6 +73,7 @@ services:
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=alpha_tenant;Username=alpha;Password=alpha
       Jwt__Secret: ${JWT_SECRET:?JWT_SECRET must be set in .env}
+      Seed__DemoData: "true"
     networks:
       - alpha-internal
     depends_on:
@@ -94,6 +95,7 @@ services:
       Nats__User: ${NATS_USER_SERVICES:?NATS_USER_SERVICES must be set in .env}
       Nats__Password: ${NATS_PASSWORD_SERVICES:?NATS_PASSWORD_SERVICES must be set in .env}
       Services__Tenant: http://tenant:8080
+      Seed__DemoData: "true"
     networks:
       - alpha-internal
     depends_on:
@@ -115,6 +117,7 @@ services:
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=alpha_tag_catalog;Username=alpha;Password=alpha
       Jwt__Secret: ${JWT_SECRET:?JWT_SECRET must be set in .env}
+      Seed__DemoData: "true"
     networks:
       - alpha-internal
     depends_on:

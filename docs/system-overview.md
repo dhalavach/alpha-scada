@@ -665,7 +665,9 @@ NATS HTTP:  http://localhost:8222
 Grafana:    http://localhost:3000  (ops profile)
 ```
 
-The Compose stack starts demo users through `Seed__DemoUsers=true` on Identity. Do not use that flag for production-like deployments.
+The Compose stack starts demo users and assets through `Seed__DemoData=true` on Identity, Tenant, Asset, and Tag Catalog. Do not use that flag for production-like deployments.
+
+Monthly report availability is runtime-derived calendar availability: runtime hours divided by elapsed hours in the requested month. Completed months use the full calendar month, the current month uses elapsed time through the generation instant, and future months are rejected. It is not planned-production-schedule availability.
 
 ### k3s
 

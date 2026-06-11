@@ -5,8 +5,8 @@ type LoginProps = {
 };
 
 export default function Login({ onLogin }: LoginProps) {
-  const [email, setEmail] = useState("admin@alpha.local");
-  const [password, setPassword] = useState("ChangeMe!123");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
 
   return (
@@ -23,8 +23,8 @@ export default function Login({ onLogin }: LoginProps) {
         <span className="brandMark large">A</span>
         <p className="eyebrow">Alpha SCADA</p>
         <h1>Sign in</h1>
-        <label>Email<input value={email} onChange={event => setEmail(event.target.value)} /></label>
-        <label>Password<input type="password" value={password} onChange={event => setPassword(event.target.value)} /></label>
+        <label>Email<input value={email} autoComplete="username" required onChange={event => setEmail(event.target.value)} /></label>
+        <label>Password<input type="password" value={password} autoComplete="current-password" required onChange={event => setPassword(event.target.value)} /></label>
         {error && <p className="error">{error}</p>}
         <button className="primaryButton" type="submit">Login</button>
       </form>

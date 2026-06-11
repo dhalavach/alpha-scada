@@ -7,7 +7,8 @@ namespace Alpha.Scada.Reporting.Application;
 
 public sealed class ReportingService(
     IHttpClientFactory httpClientFactory,
-    ReportingRepository repository)
+    ReportingRepository repository,
+    TimeProvider timeProvider)
 {
     public Task<MonthlyReportDto> RunQueuedMonthlyAsync(Guid tenantId, Guid unitId, string period, CancellationToken cancellationToken) =>
         GenerateMonthlyAsync(tenantId, unitId, period, cancellationToken);
@@ -31,7 +32,7 @@ public sealed class ReportingService(
 
         var alarm = httpClientFactory.CreateClient(AlphaServiceClients.Alarm);
         var alarmCount = await alarm.GetFromJsonAsync<int>($"/internal/v1/alarms/count?unitId={unitId}&period={period}", cancellationToken);
-        var availability = alarmCount > 0 ? profile.AvailabilityWithAlarmsPercent : profile.AvailabilityNoAlarmsPercent;
+        var availability = CalculateAvailability(period, aggregate.RuntimeHours);
 
         var report = new MonthlyReportDto(
             Guid.Empty,
@@ -48,5 +49,24 @@ public sealed class ReportingService(
             DateTimeOffset.UtcNow);
 
         return await repository.SaveAsync(report, cancellationToken);
+    }
+
+    private double CalculateAvailability(string period, double runtimeHours)
+    {
+        var range = MonthPeriod.Parse(period);
+        var now = timeProvider.GetUtcNow();
+        if (range.StartUtc > now)
+        {
+            throw new ArgumentException("Report period cannot be in the future.", nameof(period));
+        }
+
+        var effectiveEnd = range.EndUtc < now ? range.EndUtc : now;
+        var elapsedHours = (effectiveEnd - range.StartUtc).TotalHours;
+        if (elapsedHours <= 0)
+        {
+            return 0;
+        }
+
+        return Math.Round(Math.Clamp(runtimeHours / elapsedHours * 100, 0, 100), 1);
     }
 }

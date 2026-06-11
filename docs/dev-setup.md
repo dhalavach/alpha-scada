@@ -26,7 +26,13 @@ viewer@alpha.local / ChangeMe!123
 support@alpha.local / ChangeMe!123
 ```
 
-For production-like runs, do not set `Seed__DemoUsers=true`. If the identity database is empty, the Identity service creates `bootstrap-admin@local` with a random temporary password and logs it once at startup. Rotate that credential immediately.
+For production-like runs, do not set `Seed__DemoData=true`. If the identity database is empty, the Identity service creates `bootstrap-admin@local` with a random temporary password and logs it once at startup. Rotate that credential immediately.
+
+Changing the seed flag does not delete rows from an existing database. After taking a backup, remove the built-in demo dataset explicitly with:
+
+```bash
+ops/scripts/remove-demo-data.sh --yes
+```
 
 ## Test Container Prewarm
 

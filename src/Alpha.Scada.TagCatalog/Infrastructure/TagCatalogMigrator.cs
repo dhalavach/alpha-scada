@@ -3,7 +3,11 @@ using Npgsql;
 
 namespace Alpha.Scada.TagCatalog.Infrastructure;
 
-public sealed class TagCatalogMigrator(NpgsqlDataSource dataSource, ILogger<TagCatalogMigrator> logger) :
+public sealed class TagCatalogMigrator(
+    NpgsqlDataSource dataSource,
+    IConfiguration configuration,
+    IHostEnvironment environment,
+    ILogger<TagCatalogMigrator> logger) :
     SqlDatabaseMigrator(dataSource, logger)
 {
     protected override IReadOnlyList<SqlMigration> Migrations { get; } =
@@ -38,8 +42,6 @@ public sealed class TagCatalogMigrator(NpgsqlDataSource dataSource, ILogger<TagC
             create table if not exists report_profiles (
                 tenant_id uuid not null,
                 unit_id uuid not null,
-                availability_no_alarms_percent double precision not null,
-                availability_with_alarms_percent double precision not null,
                 biochar_yield_m3_per_kg double precision not null,
                 primary key (tenant_id, unit_id)
             );
@@ -53,6 +55,11 @@ public sealed class TagCatalogMigrator(NpgsqlDataSource dataSource, ILogger<TagC
                 threshold double precision,
                 primary key (tenant_id, unit_id, metric_key)
             );
+            """),
+        new("002_drop_availability_constants", """
+            alter table report_profiles
+                drop column if exists availability_no_alarms_percent,
+                drop column if exists availability_with_alarms_percent;
             """)
     ];
 
@@ -79,6 +86,11 @@ public sealed class TagCatalogMigrator(NpgsqlDataSource dataSource, ILogger<TagC
             await definition.ExecuteNonQueryAsync(cancellationToken);
         }
 
+        if (!(configuration.GetValue<bool?>("Seed:DemoData") ?? environment.IsDevelopment()))
+        {
+            return;
+        }
+
         foreach (var unit in Units)
         {
             foreach (var tag in SeedTags)
@@ -100,8 +112,8 @@ public sealed class TagCatalogMigrator(NpgsqlDataSource dataSource, ILogger<TagC
             }
 
             await using var profile = new NpgsqlCommand("""
-                insert into report_profiles (tenant_id, unit_id, availability_no_alarms_percent, availability_with_alarms_percent, biochar_yield_m3_per_kg)
-                values (@tenant_id, @unit_id, 99.5, 98.5, 0.00045)
+                insert into report_profiles (tenant_id, unit_id, biochar_yield_m3_per_kg)
+                values (@tenant_id, @unit_id, 0.00045)
                 on conflict (tenant_id, unit_id) do nothing
                 """, connection);
             profile.Parameters.AddWithValue("tenant_id", unit.TenantId);

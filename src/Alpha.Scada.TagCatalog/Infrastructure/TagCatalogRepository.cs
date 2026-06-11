@@ -38,15 +38,13 @@ public sealed class TagCatalogRepository(NpgsqlDataSource dataSource)
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var profileCommand = new NpgsqlCommand("""
-            select availability_no_alarms_percent, availability_with_alarms_percent, biochar_yield_m3_per_kg
+            select biochar_yield_m3_per_kg
             from report_profiles
             where tenant_id = @tenant_id and unit_id = @unit_id
             """, connection);
         profileCommand.Parameters.AddWithValue("tenant_id", tenantId);
         profileCommand.Parameters.AddWithValue("unit_id", unitId);
 
-        double availabilityNoAlarms;
-        double availabilityWithAlarms;
         double biocharYield;
         await using (var reader = await profileCommand.ExecuteReaderAsync(cancellationToken))
         {
@@ -55,9 +53,7 @@ public sealed class TagCatalogRepository(NpgsqlDataSource dataSource)
                 return null;
             }
 
-            availabilityNoAlarms = reader.GetDouble(0);
-            availabilityWithAlarms = reader.GetDouble(1);
-            biocharYield = reader.GetDouble(2);
+            biocharYield = reader.GetDouble(0);
         }
 
         await using var bindingsCommand = new NpgsqlCommand("""
@@ -89,8 +85,6 @@ public sealed class TagCatalogRepository(NpgsqlDataSource dataSource)
         return new ReportProfileDto(
             tenantId,
             unitId,
-            availabilityNoAlarms,
-            availabilityWithAlarms,
             biocharYield,
             bindings);
     }

@@ -11,6 +11,7 @@ builder.Services.AddServiceDatabase(builder.Configuration);
 builder.Services.AddAlphaMigrator<ReportingMigrator>();
 builder.Services.AddSingleton<ReportingRepository>();
 builder.Services.AddSingleton<ReportingService>();
+builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddAlphaJwtAuthentication(builder.Configuration);
 builder.Services.AddAlphaServiceClients(
     builder.Configuration,

@@ -53,7 +53,7 @@ The Gateway is also exposed directly for API debugging:
 http://localhost:5202
 ```
 
-Local demo credentials live in [docs/dev-setup.md](docs/dev-setup.md). Demo user seeding is enabled in Docker Compose only; production-like startup should not use `Seed__DemoUsers=true`.
+Local demo credentials live in [docs/dev-setup.md](docs/dev-setup.md). Demo data seeding is enabled in Docker Compose only; production-like startup should not use `Seed__DemoData=true`.
 
 ## Useful Commands
 
