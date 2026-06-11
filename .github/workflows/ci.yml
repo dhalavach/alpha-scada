@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Pre-pull integration test images
+        run: |
+          docker pull timescale/timescaledb:2.17.2-pg16
+          docker pull nats:2.12-alpine
+      - name: Restore
+        run: dotnet restore Alpha.Scada.slnx
+      - name: Build
+        run: dotnet build Alpha.Scada.slnx --no-restore
+      - name: Test
+        run: dotnet test Alpha.Scada.slnx --no-build --logger "trx;LogFileName=ci.trx" --results-directory TestResults
+      - name: Reject skipped tests
+        if: always()
+        run: |
+          test -f TestResults/ci.trx
+          if grep -Eq 'notExecuted="[1-9][0-9]*"' TestResults/ci.trx; then
+            echo "CI does not permit skipped tests."
+            exit 1
+          fi
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-results
+          path: TestResults/
+
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: src/Alpha.Scada.Web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: src/Alpha.Scada.Web/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build

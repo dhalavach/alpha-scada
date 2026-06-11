@@ -1,5 +1,7 @@
 # Alpha SCADA Platform
 
+[![CI](https://github.com/dhalavach/alpha-scada/actions/workflows/ci.yml/badge.svg)](https://github.com/dhalavach/alpha-scada/actions/workflows/ci.yml)
+
 Alpha SCADA is a lightweight open-source SCADA platform for small industrial energy sites. The current implementation is a browser-based operator UI plus a .NET 10 backend, NATS JetStream messaging, TimescaleDB-backed telemetry history, alarms, reporting, and Docker/k3s deployment assets.
 
 This repository is intentionally generic: the demo asset is a **Combined Heat and Power Unit**, but the service model is tenant/site/unit/tag based and can be adapted to other small industrial monitoring use cases.
