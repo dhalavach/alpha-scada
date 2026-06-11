@@ -37,13 +37,13 @@ app.MapAlphaOperationalEndpoints(serviceName);
 
 var internalApi = app.MapGroup("/internal/v1").RequireAuthorization();
 
-internalApi.MapGet("/telemetry/units/{unitId:guid}/current", async (Guid unitId, AuthenticatedUser user, TelemetryService service, HttpContext context) =>
-    Results.Ok(await service.GetCurrentAsync(unitId, user.Current, context.RequestAborted)));
+internalApi.MapGet("/telemetry/units/{unitId:guid}/current", async (Guid unitId, AuthenticatedUser user, TelemetryService service, CancellationToken cancellationToken) =>
+    Results.Ok(await service.GetCurrentAsync(unitId, user.Current, cancellationToken)));
 
-internalApi.MapGet("/telemetry/tags/{tagId:guid}/history", async (Guid tagId, int? minutes, AuthenticatedUser user, TelemetryService service, HttpContext context) =>
+internalApi.MapGet("/telemetry/tags/{tagId:guid}/history", async (Guid tagId, int? minutes, AuthenticatedUser user, TelemetryService service, CancellationToken cancellationToken) =>
 {
     var window = TimeSpan.FromMinutes(Math.Clamp(minutes ?? 30, 1, 24 * 60));
-    return Results.Ok(await service.GetHistoryAsync(tagId, window, user.Current, context.RequestAborted));
+    return Results.Ok(await service.GetHistoryAsync(tagId, window, user.Current, cancellationToken));
 });
 
 internalApi.MapPost("/telemetry/units/{unitId:guid}/report-aggregate", async (Guid unitId, ReportAggregateRequest request, TelemetryService service, CancellationToken cancellationToken) =>

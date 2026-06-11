@@ -8,18 +8,19 @@ public sealed class TelemetryBroadcastHandler(IHubContext<TelemetryHub> hub)
 {
     public Task Handle(TelemetryBatchStored message, CancellationToken cancellationToken) =>
         hub.Clients.Group(TelemetryHub.TenantGroup(message.TenantId))
-            .SendAsync("telemetryUpdated", new
-            {
-                tenantId = message.TenantId,
-                unitId = message.UnitId,
-                storedAtUtc = message.StoredAtUtc,
-                samples = message.Samples.Select(sample => new
-                {
-                    tagId = sample.TagId,
-                    tagKey = sample.TagKey,
-                    value = sample.Value,
-                    quality = sample.Quality,
-                    timestampUtc = sample.SourceTimestampUtc
-                }).ToArray()
-            }, cancellationToken);
+            .SendAsync(
+                "telemetryUpdated",
+                new TelemetryUpdatedPayload(
+                    message.TenantId,
+                    message.UnitId,
+                    message.StoredAtUtc,
+                    message.Samples
+                        .Select(sample => new TelemetrySamplePayload(
+                            sample.TagId,
+                            sample.TagKey,
+                            sample.Value,
+                            sample.Quality,
+                            sample.SourceTimestampUtc))
+                        .ToArray()),
+                cancellationToken);
 }

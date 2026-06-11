@@ -11,9 +11,9 @@ namespace Alpha.Scada.ServiceDefaults;
 
 public sealed class JwtTokenService(IConfiguration configuration)
 {
-    private readonly JwtSecurityTokenHandler _handler = new() { MapInboundClaims = false };
-    private readonly SymmetricSecurityKey _signingKey = new(GetSigningSecret(configuration));
-    private readonly TokenValidationParameters _validationParameters = CreateValidationParameters(configuration);
+    private readonly JwtSecurityTokenHandler handler = new() { MapInboundClaims = false };
+    private readonly SymmetricSecurityKey signingKey = new(GetSigningSecret(configuration));
+    private readonly TokenValidationParameters validationParameters = CreateValidationParameters(configuration);
 
     public static byte[] GetSigningSecret(IConfiguration configuration)
     {
@@ -54,16 +54,16 @@ public sealed class JwtTokenService(IConfiguration configuration)
                 new Claim("role", user.Role)
             ]),
             Expires = expires.UtcDateTime,
-            SigningCredentials = new SigningCredentials(_signingKey, SecurityAlgorithms.HmacSha256)
+            SigningCredentials = new SigningCredentials(signingKey, SecurityAlgorithms.HmacSha256)
         };
-        return new LoginResponse(_handler.WriteToken(_handler.CreateToken(descriptor)), expires, user);
+        return new LoginResponse(handler.WriteToken(handler.CreateToken(descriptor)), expires, user);
     }
 
     public CurrentUserDto? Validate(string token)
     {
         try
         {
-            var principal = _handler.ValidateToken(token, _validationParameters, out _);
+            var principal = handler.ValidateToken(token, validationParameters, out _);
             var userId = Guid.Parse(principal.FindFirstValue(JwtRegisteredClaimNames.Sub) ?? "");
             var tenantId = Guid.Parse(principal.FindFirstValue("tenant_id") ?? "");
             return new CurrentUserDto(

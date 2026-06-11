@@ -19,8 +19,8 @@ app.MapAlphaOperationalEndpoints(serviceName);
 
 var internalApi = app.MapGroup("/internal/v1").RequireAuthorization();
 
-internalApi.MapGet("/units/{unitId:guid}/tags", async (Guid unitId, AuthenticatedUser user, TagCatalogService service, HttpContext context) =>
-    Results.Ok(await service.GetTagsForUnitAsync(unitId, user.Current, context.RequestAborted)));
+internalApi.MapGet("/units/{unitId:guid}/tags", async (Guid unitId, AuthenticatedUser user, TagCatalogService service, CancellationToken cancellationToken) =>
+    Results.Ok(await service.GetTagsForUnitAsync(unitId, user.Current, cancellationToken)));
 
 internalApi.MapPost("/tags/resolve", async (ResolveTagsRequest request, TagCatalogService service, CancellationToken cancellationToken) =>
     Results.Ok(await service.ResolveTagsAsync(request, cancellationToken)))

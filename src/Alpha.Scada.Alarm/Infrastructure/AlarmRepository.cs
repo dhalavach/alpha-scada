@@ -7,14 +7,8 @@ using NpgsqlTypes;
 
 namespace Alpha.Scada.Alarm.Infrastructure;
 
-public sealed class AlarmRepository
+public sealed class AlarmRepository(NpgsqlDataSource dataSource)
 {
-    private readonly NpgsqlDataSource dataSource;
-
-    public AlarmRepository(NpgsqlDataSource dataSource)
-    {
-        this.dataSource = dataSource;
-    }
 
     public async Task<AlarmChanges> EvaluateAsync(AlarmEvaluationRequest request, CancellationToken cancellationToken)
     {

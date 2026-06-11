@@ -5,14 +5,8 @@ using NpgsqlTypes;
 
 namespace Alpha.Scada.Telemetry.Infrastructure;
 
-public sealed class TelemetryRepository
+public sealed class TelemetryRepository(NpgsqlDataSource dataSource)
 {
-    private readonly NpgsqlDataSource dataSource;
-
-    public TelemetryRepository(NpgsqlDataSource dataSource)
-    {
-        this.dataSource = dataSource;
-    }
 
     public async Task IngestAsync(
         TelemetryIngestRequest request,

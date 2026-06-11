@@ -25,15 +25,15 @@ app.MapAlphaOperationalEndpoints(serviceName);
 
 var internalApi = app.MapGroup("/internal/v1").RequireAuthorization();
 
-internalApi.MapGet("/sites", async (AuthenticatedUser user, AssetService service, HttpContext context) =>
-    Results.Ok(await service.GetSitesAsync(user.Current, context.RequestAborted)));
+internalApi.MapGet("/sites", async (AuthenticatedUser user, AssetService service, CancellationToken cancellationToken) =>
+    Results.Ok(await service.GetSitesAsync(user.Current, cancellationToken)));
 
-internalApi.MapGet("/sites/{siteId:guid}/units", async (Guid siteId, AuthenticatedUser user, AssetService service, HttpContext context) =>
-    Results.Ok(await service.GetUnitsForSiteAsync(siteId, user.Current, context.RequestAborted)));
+internalApi.MapGet("/sites/{siteId:guid}/units", async (Guid siteId, AuthenticatedUser user, AssetService service, CancellationToken cancellationToken) =>
+    Results.Ok(await service.GetUnitsForSiteAsync(siteId, user.Current, cancellationToken)));
 
-internalApi.MapGet("/units/{unitId:guid}", async (Guid unitId, AuthenticatedUser user, AssetService service, HttpContext context) =>
+internalApi.MapGet("/units/{unitId:guid}", async (Guid unitId, AuthenticatedUser user, AssetService service, CancellationToken cancellationToken) =>
 {
-    var unit = await service.GetUnitAsync(unitId, user.Current, context.RequestAborted);
+    var unit = await service.GetUnitAsync(unitId, user.Current, cancellationToken);
     return unit is null ? Results.NotFound() : Results.Ok(unit);
 });
 

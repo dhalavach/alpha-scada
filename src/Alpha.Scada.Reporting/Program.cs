@@ -27,7 +27,7 @@ app.MapAlphaOperationalEndpoints(serviceName);
 
 var internalApi = app.MapGroup("/internal/v1").RequireAuthorization();
 
-internalApi.MapGet("/reports/monthly", async (AuthenticatedUser user, ReportingRepository repository, HttpContext context) =>
-    Results.Ok(await repository.GetMonthlyReportsAsync(user.Current, context.RequestAborted)));
+internalApi.MapGet("/reports/monthly", async (AuthenticatedUser user, ReportingRepository repository, CancellationToken cancellationToken) =>
+    Results.Ok(await repository.GetMonthlyReportsAsync(user.Current, cancellationToken)));
 
 app.Run();

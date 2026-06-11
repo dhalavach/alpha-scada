@@ -25,14 +25,14 @@ app.MapPost("/internal/v1/auth/login", async (LoginRequest request, AuthService 
 
 app.MapGroup("/internal/v1")
     .RequireAuthorization()
-    .MapPost("/auth/logout", async (AuthenticatedUser user, IdentityRepository repository, HttpContext context) =>
+    .MapPost("/auth/logout", async (AuthenticatedUser user, IdentityRepository repository, CancellationToken cancellationToken) =>
     {
         await repository.WriteAuditAsync(
             user.Current.TenantId,
             user.Current.UserId,
             "auth.logout",
             "User logged out",
-            context.RequestAborted);
+            cancellationToken);
         return Results.NoContent();
     });
 

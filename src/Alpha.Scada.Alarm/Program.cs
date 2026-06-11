@@ -33,13 +33,13 @@ app.MapAlphaOperationalEndpoints(serviceName);
 
 var internalApi = app.MapGroup("/internal/v1").RequireAuthorization();
 
-internalApi.MapGet("/alarms/active", async (AuthenticatedUser user, AlarmService service, HttpContext context) =>
-    Results.Ok(await service.GetActiveAsync(user.Current, context.RequestAborted)));
+internalApi.MapGet("/alarms/active", async (AuthenticatedUser user, AlarmService service, CancellationToken cancellationToken) =>
+    Results.Ok(await service.GetActiveAsync(user.Current, cancellationToken)));
 
-internalApi.MapPost("/alarms/{alarmId:guid}/ack", async (Guid alarmId, AuthenticatedUser user, AlarmService service, HttpContext context) =>
+internalApi.MapPost("/alarms/{alarmId:guid}/ack", async (Guid alarmId, AuthenticatedUser user, AlarmService service, CancellationToken cancellationToken) =>
 {
     if (!RoleRules.CanAcknowledge(user.Current.Role)) return Results.StatusCode(StatusCodes.Status403Forbidden);
-    var acknowledged = await service.AcknowledgeAsync(alarmId, user.Current, context.RequestAborted);
+    var acknowledged = await service.AcknowledgeAsync(alarmId, user.Current, cancellationToken);
     if (acknowledged is null)
     {
         return Results.NotFound();

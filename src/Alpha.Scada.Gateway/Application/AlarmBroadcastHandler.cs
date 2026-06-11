@@ -17,5 +17,5 @@ public sealed class AlarmBroadcastHandler(IHubContext<TelemetryHub> hub)
 
     private Task BroadcastAsync(Guid tenantId, Guid unitId, CancellationToken cancellationToken) =>
         hub.Clients.Group(TelemetryHub.TenantGroup(tenantId))
-            .SendAsync("alarmsChanged", new { TenantId = tenantId, UnitId = unitId }, cancellationToken);
+            .SendAsync("alarmsChanged", new AlarmsChangedPayload(tenantId, unitId), cancellationToken);
 }

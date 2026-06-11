@@ -5,14 +5,8 @@ using Npgsql;
 
 namespace Alpha.Scada.Asset.Infrastructure;
 
-public sealed class AssetRepository
+public sealed class AssetRepository(NpgsqlDataSource dataSource)
 {
-    private readonly NpgsqlDataSource dataSource;
-
-    public AssetRepository(NpgsqlDataSource dataSource)
-    {
-        this.dataSource = dataSource;
-    }
 
     public async Task<IReadOnlyCollection<SiteDto>> GetSitesAsync(CurrentUserDto user, CancellationToken cancellationToken)
     {

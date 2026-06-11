@@ -18,8 +18,8 @@ app.MapAlphaOperationalEndpoints(serviceName);
 
 var internalApi = app.MapGroup("/internal/v1").RequireAuthorization();
 
-internalApi.MapGet("/tenants", async (AuthenticatedUser user, TenantService service, HttpContext context) =>
-    Results.Ok(await service.GetTenantsAsync(user.Current, context.RequestAborted)));
+internalApi.MapGet("/tenants", async (AuthenticatedUser user, TenantService service, CancellationToken cancellationToken) =>
+    Results.Ok(await service.GetTenantsAsync(user.Current, cancellationToken)));
 
 internalApi.MapGet("/tenants/resolve/{tenantKey}", async (string tenantKey, TenantService service, CancellationToken cancellationToken) =>
 {

@@ -11,7 +11,7 @@ public sealed class ChpUnitSimulatorWorker(
     IConfiguration configuration,
     ILogger<ChpUnitSimulatorWorker> logger) : BackgroundService
 {
-    private readonly Random _random = new();
+    private readonly Random random = new();
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -100,7 +100,7 @@ public sealed class ChpUnitSimulatorWorker(
 
     private EdgeTelemetrySample Sample(string key, double center, double spread, double wave, DateTimeOffset timestamp)
     {
-        var noise = (_random.NextDouble() - 0.5) * spread;
+        var noise = (random.NextDouble() - 0.5) * spread;
         var value = center + (spread * 0.6 * wave) + noise;
         return new EdgeTelemetrySample(key, Math.Round(value, 2), "good", timestamp);
     }
