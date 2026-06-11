@@ -9,6 +9,6 @@ public static class MessagingTopology
     public static void Configure(WolverineOptions options)
     {
         options.ListenForReportRequests("reporting-report-requested");
-        options.PublishDomainEvent<ReportCompleted>(Topics.ReportCompleted);
+        options.PublishReportCompleted<ReportCompleted>();
     }
 }

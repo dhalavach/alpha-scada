@@ -114,7 +114,11 @@ public static class AlphaMessaging
             Topics.StatusChangedEvent,
             Topics.AlarmRaisedEvent,
             Topics.AlarmClearedEvent,
-            Topics.AlarmAcknowledgedEvent,
+            Topics.AlarmAcknowledgedEvent);
+
+        nats.DefineLogStream(
+            Topics.ReportsStream,
+            TimeSpan.FromDays(7),
             Topics.ReportCompleted);
 
         nats.DefineWorkQueueStream(Topics.JobsStream, Topics.ReportRequested);

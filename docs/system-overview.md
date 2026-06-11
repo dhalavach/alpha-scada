@@ -74,7 +74,8 @@ flowchart LR
     subgraph "Messaging"
         NATS["NATS Server 2.12<br/>JetStream streams + MQTT listener"]
         EdgeStream["ALPHA_EDGE<br/>alpha.*.*.*.telemetry, spBv1.0.>"]
-        DomainStream["ALPHA_DOMAIN<br/>telemetry, status, alarms, report completed"]
+        DomainStream["ALPHA_DOMAIN<br/>telemetry, status, alarms"]
+        ReportsStream["ALPHA_REPORTS<br/>report completed"]
         JobsStream["ALPHA_JOBS<br/>report requests"]
     end
 
@@ -127,9 +128,11 @@ flowchart LR
     Telemetry --> Tags
     Telemetry -->|"TelemetryBatchStored"| NATS
     NATS --> DomainStream
+    NATS --> ReportsStream
     DomainStream --> Asset
     DomainStream --> Alarm
     DomainStream --> Gateway
+    ReportsStream --> Gateway
 
     Asset -->|"UnitStatusChanged"| NATS
     Alarm -->|"AlarmRaised / AlarmCleared / AlarmAcknowledged"| NATS
@@ -344,7 +347,8 @@ NATS JetStream streams:
 | Stream | Subjects | Purpose |
 | --- | --- | --- |
 | `ALPHA_EDGE` | `alpha.*.*.*.telemetry`, `spBv1.0.>` | raw edge ingress and Sparkplug-ready reserved ingress |
-| `ALPHA_DOMAIN` | `alpha.telemetry.stored`, `alpha.status.changed`, `alpha.alarm.raised`, `alpha.alarm.cleared`, `alpha.alarm.acknowledged`, `alpha.report.completed` | normalized domain events with fan-out consumers |
+| `ALPHA_DOMAIN` | `alpha.telemetry.stored`, `alpha.status.changed`, `alpha.alarm.raised`, `alpha.alarm.cleared`, `alpha.alarm.acknowledged` | normalized domain events with fan-out consumers |
+| `ALPHA_REPORTS` | `alpha.report.completed` | durable report completion events consumed by Gateway |
 | `ALPHA_JOBS` | `alpha.report.requested` | work-queue style report request jobs |
 
 Important subject constants live in `src/Alpha.Scada.ServiceDefaults/Messaging/Topics.cs`.

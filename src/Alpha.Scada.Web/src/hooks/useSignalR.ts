@@ -46,7 +46,11 @@ export default function useSignalR({
       .build();
 
     connection.onreconnecting(() => setStatus("Reconnecting"));
-    connection.onreconnected(() => setStatus("Live"));
+    connection.onreconnected(() => {
+      setStatus("Live");
+      void handlers.current.loadAlarms();
+      void handlers.current.loadSitesAndUnits();
+    });
     connection.onclose(() => setStatus("Disconnected"));
     connection.on("telemetryUpdated", (update: TelemetryUpdate) => {
       handlers.current.applyTelemetryUpdate(update);

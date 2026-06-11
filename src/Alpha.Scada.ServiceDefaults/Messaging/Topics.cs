@@ -42,6 +42,7 @@ public static class Topics
 
     public const string EdgeStream = "ALPHA_EDGE";
     public const string DomainStream = "ALPHA_DOMAIN";
+    public const string ReportsStream = "ALPHA_REPORTS";
     public const string JobsStream = "ALPHA_JOBS";
     public const string DlqStream = "ALPHA_DLQ";
 

@@ -35,9 +35,48 @@ curl -fsS "http://localhost:8222/jsz?streams=true&consumers=true" | jq
 Expected streams:
 
 - `ALPHA_EDGE`: raw edge ingress and Sparkplug-ready subjects.
-- `ALPHA_DOMAIN`: normalized telemetry, status, alarm, and report-completed events.
+- `ALPHA_DOMAIN`: normalized telemetry, status, and alarm events.
+- `ALPHA_REPORTS`: durable report-completed events.
 - `ALPHA_JOBS`: report request work queue.
 - `ALPHA_DLQ`: durable telemetry dead letters under `alpha_dlq.>`.
+
+## After Upgrading Realtime Listeners
+
+Gateway telemetry, status, and alarm broadcasts now use ephemeral Core NATS subscriptions. Report completion remains durable on the dedicated `ALPHA_REPORTS` stream.
+
+Existing installations require a one-time stream migration because NATS does not allow the same subject to belong to both `ALPHA_DOMAIN` and `ALPHA_REPORTS`. Stop Reporting and Gateway, remove `alpha.report.completed` from `ALPHA_DOMAIN`, remove the obsolete Gateway consumers, then restart both services:
+
+```bash
+docker compose stop reporting gateway
+
+docker run --rm --network scada_alpha-internal --env-file .env \
+  natsio/nats-box:0.19.7 sh -c \
+  'nats --server nats://nats:4222 --user "$NATS_USER_ADMIN" --password "$NATS_PASSWORD_ADMIN" \
+    stream edit ALPHA_DOMAIN \
+    --subjects alpha.telemetry.stored \
+    --subjects alpha.status.changed \
+    --subjects alpha.alarm.raised \
+    --subjects alpha.alarm.cleared \
+    --subjects alpha.alarm.acknowledged \
+    --force'
+
+for consumer in \
+  gateway-telemetry-stored \
+  gateway-status \
+  gateway-alarm-raised \
+  gateway-alarm-cleared \
+  gateway-alarm-acknowledged \
+  gateway-report-completed
+do
+  docker run --rm --network scada_alpha-internal --env-file .env -e CONSUMER="$consumer" \
+    natsio/nats-box:0.19.7 sh -c \
+    'nats --server nats://nats:4222 --user "$NATS_USER_ADMIN" --password "$NATS_PASSWORD_ADMIN" \
+      consumer rm ALPHA_DOMAIN "$CONSUMER" -f'
+done
+docker compose start reporting gateway
+```
+
+Reporting creates `ALPHA_REPORTS` after the old stream releases the subject, and Gateway creates a new durable `gateway-report-completed` consumer there. Removing the old same-named consumer from `ALPHA_DOMAIN` is required because Wolverine reuses existing named consumer configuration and cannot move it between streams.
 
 ## Telemetry DLQ
 
@@ -52,8 +91,10 @@ Malformed or unsupported telemetry envelopes are published to `ALPHA_DLQ` before
 Inspect the stream:
 
 ```bash
-docker compose exec -T nats nats --server nats://nats:4222 \
-  --user admin --password "$NATS_PASSWORD_ADMIN" stream view ALPHA_DLQ
+docker run --rm --network scada_alpha-internal --env-file .env \
+  natsio/nats-box:0.19.7 sh -c \
+  'nats --server nats://nats:4222 --user "$NATS_USER_ADMIN" --password "$NATS_PASSWORD_ADMIN" \
+    stream view ALPHA_DLQ'
 ```
 
 Decode a payload:
@@ -126,7 +167,7 @@ Report jobs use `alpha.report.requested` in the `ALPHA_JOBS` stream:
 curl -fsS "http://localhost:8222/jsz?streams=true&consumers=true" | jq '.account_details[].stream_detail[] | select(.name=="ALPHA_JOBS")'
 ```
 
-If pending messages grow, restart `reporting`. If completed events are not reaching the UI, restart `gateway` and inspect `ALPHA_DOMAIN`.
+If pending messages grow, restart `reporting`. If completed events are not reaching the UI, restart `gateway` and inspect `ALPHA_REPORTS`.
 
 ## Raw Telemetry Is Not Flowing
 

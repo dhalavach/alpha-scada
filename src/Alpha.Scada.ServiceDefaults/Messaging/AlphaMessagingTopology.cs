@@ -17,6 +17,24 @@ public static class AlphaMessagingTopology
         return options;
     }
 
+    public static WolverineOptions ListenForEphemeralDomainEvent(this WolverineOptions options, string subject)
+    {
+        options.ListenToNatsSubject(subject).BufferedInMemory();
+        return options;
+    }
+
+    public static WolverineOptions PublishReportCompleted<T>(this WolverineOptions options)
+    {
+        options.PublishMessage<T>().ToNatsSubject(Topics.ReportCompleted).UseJetStream(Topics.ReportsStream);
+        return options;
+    }
+
+    public static WolverineOptions ListenForReportCompleted(this WolverineOptions options, string durableName)
+    {
+        options.ListenToNatsSubject(Topics.ReportCompleted).UseJetStream(Topics.ReportsStream, durableName);
+        return options;
+    }
+
     public static WolverineOptions PublishReportRequest<T>(this WolverineOptions options)
     {
         options.PublishMessage<T>().ToNatsSubject(Topics.ReportRequested).UseJetStream(Topics.JobsStream);

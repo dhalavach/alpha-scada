@@ -31,7 +31,8 @@ Alarm, Asset, Gateway, and Reporting must not parse raw edge telemetry. They con
 ## Streams And Subjects
 
 - `ALPHA_EDGE`: `alpha.*.*.*.telemetry`, `spBv1.0.>`
-- `ALPHA_DOMAIN`: `alpha.telemetry.stored`, `alpha.status.changed`, `alpha.alarm.*`, `alpha.report.completed`
+- `ALPHA_DOMAIN`: `alpha.telemetry.stored`, `alpha.status.changed`, `alpha.alarm.*`
+- `ALPHA_REPORTS`: `alpha.report.completed`
 - `ALPHA_JOBS`: `alpha.report.requested`
 
 Report requests use JetStream work-queue semantics. Domain events use log-style streams so multiple services can independently consume the same event. Tenant, site, and unit routing details are carried in the event payload rather than encoded into every Wolverine-native subject.

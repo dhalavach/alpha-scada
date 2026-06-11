@@ -85,7 +85,8 @@ Two layers cooperate:
 | Stream | Type | Subjects | Purpose |
 | --- | --- | --- | --- |
 | `ALPHA_EDGE` | log (7-day) | `alpha.*.*.*.telemetry`, `spBv1.0.>` | Raw inbound edge telemetry (and reserved Sparkplug ingress) |
-| `ALPHA_DOMAIN` | log (7-day) | `alpha.telemetry.stored`, `alpha.status.changed`, `alpha.alarm.{raised,cleared,acknowledged}`, `alpha.report.completed` | Internal domain events |
+| `ALPHA_DOMAIN` | log (7-day) | `alpha.telemetry.stored`, `alpha.status.changed`, `alpha.alarm.{raised,cleared,acknowledged}` | Internal domain events |
+| `ALPHA_REPORTS` | log (7-day) | `alpha.report.completed` | Durable report completion events |
 | `ALPHA_JOBS` | work queue | `alpha.report.requested` | Asynchronous report jobs (competing consumers) |
 
 Global JetStream defaults: `MaxAge` 7 days, `AckWait` 30s, `MaxDeliver` 5, `DuplicateWindow` 10 min. Subjects are **dot-delimited** NATS subjects (`alpha.<tenant>.<site>.<unit>.<type>`); the tenant/site/unit hierarchy doubles as a **Unified-Namespace**-style address.
@@ -167,7 +168,7 @@ Ingestion writes are **set-based** (`insert … select from unnest(...)`), not r
 | **Comms-loss** | `CommunicationLossMonitorWorker` marks stale units offline → `UnitStatusChanged`; Alarm handles it → raises comms-loss alarm | Periodic (configurable interval/threshold) |
 | **Alarm lifecycle** | Alarm handles `TelemetryBatchStored` → evaluates → writes `alarm_events` **+** `alarm_outbox` in one tx → `AlarmOutboxDispatcher` publishes `AlarmRaised/Cleared` | **Guaranteed** (atomic outbox + opportunistic dispatch + sweeper) |
 | **Alarm ack** | Gateway `POST /api/alarms/{id}/ack` → Alarm service (role-checked) writes ack + outbox in one tx → dispatcher publishes `AlarmAcknowledged` | **Guaranteed** |
-| **Reporting** | Gateway publishes `ReportRequested` (`ALPHA_JOBS`) → Reporting aggregates (telemetry CAGG + alarm count + profile) → persists → `ReportCompleted` (`ALPHA_DOMAIN`) → Gateway broadcasts | Durable job + durable event |
+| **Reporting** | Gateway publishes `ReportRequested` (`ALPHA_JOBS`) → Reporting aggregates (telemetry CAGG + alarm count + profile) → persists → `ReportCompleted` (`ALPHA_REPORTS`) → Gateway broadcasts | Durable job + durable event |
 | **Realtime UI** | Gateway handlers for telemetry/status/alarm/report events → SignalR groups (per tenant) | Best-effort broadcast; persisted state is authoritative |
 
 ---
@@ -234,7 +235,7 @@ Ingestion writes are **set-based** (`insert … select from unnest(...)`), not r
 - **Tenant / Site / Unit / Tag** — the domain hierarchy. A *tag* is a single measured signal (e.g., `engine.electrical_output_kw`).
 - **Canonical telemetry** — the internal, protocol-neutral telemetry contract every adapter produces.
 - **Adapter (ACL)** — a component translating one external protocol/format into canonical telemetry.
-- **Domain event** — an immutable record of something that happened (`TelemetryBatchStored`, `AlarmRaised`, …), published on `ALPHA_DOMAIN`.
+- **Domain event** — an immutable record of something that happened. Realtime telemetry/status/alarm events use `ALPHA_DOMAIN`; durable report completion uses `ALPHA_REPORTS`.
 - **Outbox** — events written to a DB table in the same transaction as the state change, then relayed, for guaranteed delivery.
 - **Inbox** — Wolverine's record of processed incoming messages, enabling safe redelivery/dedup.
 - **CAGG** — TimescaleDB continuous aggregate (incrementally maintained rollup).
