@@ -1,5 +1,6 @@
 services:
   gateway:
+    restart: unless-stopped
     build:
       context: .
       dockerfile: src/Dockerfile.service
@@ -45,6 +46,7 @@ services:
         condition: service_started
 
   identity:
+    restart: unless-stopped
     build:
       context: .
       dockerfile: src/Dockerfile.service
@@ -63,6 +65,7 @@ services:
         condition: service_healthy
 
   tenant:
+    restart: unless-stopped
     build:
       context: .
       dockerfile: src/Dockerfile.service
@@ -81,6 +84,7 @@ services:
         condition: service_healthy
 
   asset:
+    restart: unless-stopped
     build:
       context: .
       dockerfile: src/Dockerfile.service
@@ -107,6 +111,7 @@ services:
         condition: service_started
 
   tag-catalog:
+    restart: unless-stopped
     build:
       context: .
       dockerfile: src/Dockerfile.service
@@ -125,6 +130,7 @@ services:
         condition: service_healthy
 
   telemetry:
+    restart: unless-stopped
     build:
       context: .
       dockerfile: src/Dockerfile.service
@@ -158,6 +164,7 @@ services:
         condition: service_started
 
   alarm:
+    restart: unless-stopped
     build:
       context: .
       dockerfile: src/Dockerfile.service
@@ -189,6 +196,7 @@ services:
         condition: service_started
 
   reporting:
+    restart: unless-stopped
     build:
       context: .
       dockerfile: src/Dockerfile.service
@@ -223,6 +231,7 @@ services:
         condition: service_started
 
   edge:
+    restart: unless-stopped
     build:
       context: .
       dockerfile: src/Dockerfile.service
@@ -245,6 +254,7 @@ services:
         condition: service_started
 
   frontend:
+    restart: unless-stopped
     build:
       context: .
       dockerfile: src/Alpha.Scada.Web/Dockerfile
@@ -256,6 +266,7 @@ services:
       - gateway
 
   postgres:
+    restart: unless-stopped
     image: timescale/timescaledb:2.17.2-pg16
     environment:
       POSTGRES_DB: alpha_identity
@@ -274,6 +285,7 @@ services:
       - ./ops/postgres/init.sql:/docker-entrypoint-initdb.d/001-init.sql:ro
 
   nats:
+    restart: unless-stopped
     image: nats:2.12-alpine
     command: ["-c", "/etc/nats/nats-server.conf"]
     environment:

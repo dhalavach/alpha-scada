@@ -1,14 +1,23 @@
+# syntax=docker/dockerfile:1
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 ARG PROJECT
 WORKDIR /src
-COPY . .
+
+COPY --parents Alpha.Scada.slnx Directory.Build.props Directory.Packages.props src/*/*.csproj ./
 RUN dotnet restore "$PROJECT"
+
+COPY . .
 RUN dotnet publish "$PROJECT" -c Release -o /app/publish --no-restore
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0
 ARG DLL
 ENV SERVICE_DLL=$DLL
 WORKDIR /app
-COPY --from=build /app/publish .
+COPY --from=build --chown=app:app /app/publish .
+COPY --chown=app:app src/entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
+# Health is exposed over HTTP; k3s supplies probes and Compose avoids installing curl solely for HEALTHCHECK.
+USER app
 EXPOSE 8080
-ENTRYPOINT dotnet "$SERVICE_DLL"
+ENTRYPOINT ["/app/entrypoint.sh"]
