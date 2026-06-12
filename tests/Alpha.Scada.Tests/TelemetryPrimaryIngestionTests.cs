@@ -183,6 +183,57 @@ public sealed class TelemetryPrimaryIngestionTests(PostgresContainerFixture post
     }
 
     [Fact]
+    public async Task Unknown_tenant_is_dead_lettered_once_as_terminal_resolution_failure()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"alpha-telemetry-resolution-dlq-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var nats = await ContainerSupport.StartOrSkipAsync(
+                () => NatsTestSupport.StartAsync(tempDir),
+                "telemetry resolution DLQ integration test");
+            await using (nats)
+            await using (var catalog = await FakeCatalogServer.StartAsync(rejectUnknownTenant: true))
+            {
+                var connectionString = await postgres.CreateDatabaseAsync($"{nameof(TelemetryPrimaryIngestionTests)}Resolution");
+                await WaitForPostgresAsync(connectionString);
+                var natsUrl = NatsTestSupport.Url(nats);
+                using var host = BuildTelemetryHost(connectionString, natsUrl, catalog.BaseAddress);
+                await host.Services.GetRequiredService<TelemetryMigrator>().MigrateAsync(CancellationToken.None);
+                await host.StartAsync();
+                await Task.Delay(250);
+
+                var timestamp = DateTimeOffset.UtcNow;
+                var subject = Topics.Telemetry("unknown-tenant", "demo-energy-site", "chp-demo-001");
+                var payload = JsonSerializer.SerializeToUtf8Bytes(
+                    new TelemetryEnvelopeV1(
+                        TelemetryEnvelopeV1.SchemaVersion,
+                        "chp-demo-001",
+                        timestamp,
+                        [new("engine.electrical_output_kw", 61.2, "good", timestamp)]),
+                    new JsonSerializerOptions(JsonSerializerDefaults.Web));
+                var messageId = Guid.NewGuid().ToString("D");
+                await NatsTestSupport.PublishAsync(natsUrl, subject, payload, messageId);
+
+                await using var connection = new NatsConnection(new NatsOpts { Url = natsUrl, RetryOnInitialConnect = true });
+                var jetStream = new NatsJSContextFactory().CreateContext(connection);
+                var deadLetter = await FetchDeadLetterAsync(jetStream, TimeSpan.FromSeconds(10));
+                await Task.Delay(500);
+
+                Assert.Equal(nameof(TelemetryResolutionException), deadLetter.ErrorType);
+                Assert.Equal(messageId, deadLetter.MessageId);
+                Assert.Equal(1, catalog.TenantResolveCalls);
+                Assert.Equal(0, await CountRowsAsync(connectionString, "telemetry_samples"));
+                await host.StopAsync();
+            }
+        }
+        finally
+        {
+            Directory.Delete(tempDir, recursive: true);
+        }
+    }
+
+    [Fact]
     public void Dead_letter_payload_factory_caps_payload_at_64_kb()
     {
         var payload = Enumerable.Range(0, DeadLetteredTelemetryFactory.MaxPayloadBytes + 5)
@@ -389,19 +440,27 @@ public sealed class TelemetryPrimaryIngestionTests(PostgresContainerFixture post
         throw new TimeoutException("No telemetry DLQ message arrived.");
     }
 
-    private sealed class FakeCatalogServer(WebApplication app) : IAsyncDisposable
+    private sealed class FakeCatalogServer(WebApplication app, FakeCatalogRequestCounter counter) : IAsyncDisposable
     {
         public string BaseAddress { get; } = app.Urls.Single();
 
-        public static async Task<FakeCatalogServer> StartAsync()
+        public int TenantResolveCalls => Volatile.Read(ref counter.TenantResolveCalls);
+
+        public static async Task<FakeCatalogServer> StartAsync(bool rejectUnknownTenant = false)
         {
             var port = GetFreePort();
+            var counter = new FakeCatalogRequestCounter();
             var builder = WebApplication.CreateSlimBuilder();
             builder.WebHost.UseUrls($"http://127.0.0.1:{port}");
             var app = builder.Build();
 
             app.MapGet("/internal/v1/tenants/resolve/{tenantKey}", (string tenantKey) =>
-                Results.Ok(new TenantDto(TenantId, tenantKey, "Demo Operator", "EU")));
+            {
+                Interlocked.Increment(ref counter.TenantResolveCalls);
+                return rejectUnknownTenant && tenantKey != "demo-operator"
+                    ? Results.NotFound()
+                    : Results.Ok(new TenantDto(TenantId, tenantKey, "Demo Operator", "EU"));
+            });
 
             app.MapGet("/internal/v1/units/resolve", (Guid tenantId, string siteKey, string unitKey) =>
                 tenantId == TenantId && siteKey == "demo-energy-site" && unitKey == "chp-demo-001"
@@ -423,7 +482,7 @@ public sealed class TelemetryPrimaryIngestionTests(PostgresContainerFixture post
                 ]));
 
             await app.StartAsync();
-            return new FakeCatalogServer(app);
+            return new FakeCatalogServer(app, counter);
         }
 
         public async ValueTask DisposeAsync()
@@ -440,5 +499,10 @@ public sealed class TelemetryPrimaryIngestionTests(PostgresContainerFixture post
             listener.Stop();
             return port;
         }
+    }
+
+    private sealed class FakeCatalogRequestCounter
+    {
+        public int TenantResolveCalls;
     }
 }

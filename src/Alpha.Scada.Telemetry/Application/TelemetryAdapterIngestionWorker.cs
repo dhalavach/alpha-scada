@@ -124,6 +124,10 @@ public sealed class TelemetryAdapterIngestionWorker(
         {
             return await DeadLetterAsync(jetStream, message, messageId, ex, cancellationToken);
         }
+        catch (TelemetryResolutionException ex)
+        {
+            return await DeadLetterAsync(jetStream, message, messageId, ex, cancellationToken);
+        }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             throw;

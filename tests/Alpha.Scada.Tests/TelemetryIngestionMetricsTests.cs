@@ -11,6 +11,7 @@ public sealed class TelemetryIngestionMetricsTests
         var metrics = new TelemetryIngestionMetrics();
         var measurement = metrics.Begin();
         measurement.Complete(TelemetryIngestionOutcome.Success);
+        metrics.RecordUnknownTagsDropped(2);
 
         var text = new StringBuilder();
         metrics.AppendMetrics(text, "alpha-scada-telemetry");
@@ -20,5 +21,6 @@ public sealed class TelemetryIngestionMetricsTests
         Assert.Contains("outcome=\"success\"} 1", rendered);
         Assert.Contains("alpha_scada_telemetry_ingestion_processing_seconds_count", rendered);
         Assert.Contains("alpha_scada_telemetry_ingestion_processing_seconds_sum", rendered);
+        Assert.Contains("alpha_scada_telemetry_ingestion_unknown_tags_dropped_total{service=\"alpha-scada-telemetry\"} 2", rendered);
     }
 }

@@ -1,6 +1,10 @@
+using System.Net;
+using System.Net.Http.Json;
+using Alpha.Scada.Asset.Application;
 using Alpha.Scada.Asset.Infrastructure;
 using Alpha.Scada.Contracts;
 using Alpha.Scada.ServiceDefaults;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
@@ -113,6 +117,54 @@ public sealed class AssetRepositoryBehaviorTests(PostgresContainerFixture postgr
             Assert.NotNull(changed);
             Assert.Equal("online", changed.Status);
             Assert.Equal(UnitId, changed.Id);
+        });
+    }
+
+    [Fact]
+    public async Task Stale_sweep_releases_unit_locks_before_tenant_resolution()
+    {
+        await WithPostgresAsync(async connectionString =>
+        {
+            await using var dataSource = NpgsqlDataSource.Create(connectionString);
+            await MigrateAsync(dataSource);
+            await MakeUnitStaleAsync(connectionString, UnitId);
+            var repository = new AssetRepository(dataSource);
+            var resolverStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var releaseResolver = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            using var cache = new MemoryCache(new MemoryCacheOptions());
+            var resolver = new TenantKeyResolver(
+                new StaticHttpClientFactory(new DelegateHandler(async (_, cancellationToken) =>
+                {
+                    resolverStarted.TrySetResult();
+                    await releaseResolver.Task.WaitAsync(cancellationToken);
+                    return new HttpResponseMessage(HttpStatusCode.OK)
+                    {
+                        Content = JsonContent.Create(new TenantDto(TenantId, "demo-operator", "Demo", "EU"))
+                    };
+                })),
+                cache);
+            var service = new AssetService(repository, resolver, dataSource);
+
+            var offlineTask = service.MarkStaleUnitsOfflineAsync(2, CancellationToken.None);
+            await resolverStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            try
+            {
+                var online = await service.SetUnitOnlineAsync(
+                    UnitId,
+                    new UnitStatusRoute("demo-operator", "demo-energy-site", "chp-demo-001"),
+                    CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(1));
+
+                Assert.NotNull(online);
+                Assert.Equal("online", online.Status);
+            }
+            finally
+            {
+                releaseResolver.TrySetResult();
+            }
+
+            var offline = await offlineTask;
+            Assert.Single(offline);
+            Assert.Equal("offline", offline.Single().Status);
         });
     }
 
@@ -231,5 +283,20 @@ public sealed class AssetRepositoryBehaviorTests(PostgresContainerFixture postgr
                 await Task.Delay(500);
             }
         }
+    }
+
+    private sealed class StaticHttpClientFactory(HttpMessageHandler handler) : IHttpClientFactory
+    {
+        public HttpClient CreateClient(string name) =>
+            new(handler, disposeHandler: false) { BaseAddress = new Uri("http://tenant.test") };
+    }
+
+    private sealed class DelegateHandler(
+        Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> responder) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken) =>
+            responder(request, cancellationToken);
     }
 }

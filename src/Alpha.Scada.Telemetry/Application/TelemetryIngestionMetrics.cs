@@ -27,6 +27,7 @@ public sealed class TelemetryIngestionMetrics : IAlphaMetricsProvider
     private long terminalError;
     private long escapedError;
     private long maxDeliveriesExhausted;
+    private long unknownTagsDropped;
     private long durationCount;
     private long durationTicksTotal;
 
@@ -55,6 +56,11 @@ public sealed class TelemetryIngestionMetrics : IAlphaMetricsProvider
         metrics.AppendLine(
             CultureInfo.InvariantCulture,
             $"alpha_scada_telemetry_ingestion_max_deliveries_exhausted_total{{service=\"{serviceLabel}\"}} {Interlocked.Read(ref maxDeliveriesExhausted)}");
+        metrics.AppendLine("# HELP alpha_scada_telemetry_ingestion_unknown_tags_dropped_total Telemetry samples dropped because their tags were not configured");
+        metrics.AppendLine("# TYPE alpha_scada_telemetry_ingestion_unknown_tags_dropped_total counter");
+        metrics.AppendLine(
+            CultureInfo.InvariantCulture,
+            $"alpha_scada_telemetry_ingestion_unknown_tags_dropped_total{{service=\"{serviceLabel}\"}} {Interlocked.Read(ref unknownTagsDropped)}");
         metrics.AppendLine("# HELP alpha_scada_telemetry_ingestion_processing_seconds Telemetry ingestion processing duration");
         metrics.AppendLine("# TYPE alpha_scada_telemetry_ingestion_processing_seconds histogram");
 
@@ -77,6 +83,14 @@ public sealed class TelemetryIngestionMetrics : IAlphaMetricsProvider
 
     public void RecordMaxDeliveriesExhausted() =>
         Interlocked.Increment(ref maxDeliveriesExhausted);
+
+    public void RecordUnknownTagsDropped(int count)
+    {
+        if (count > 0)
+        {
+            Interlocked.Add(ref unknownTagsDropped, count);
+        }
+    }
 
     private void Complete(long startedTimestamp, TelemetryIngestionOutcome outcome)
     {

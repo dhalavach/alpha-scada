@@ -48,6 +48,9 @@ public sealed class AssetService(
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
         var changed = await repository.MarkStaleUnitsOfflineAsync(connection, transaction, minutes, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+
+        // Status is authoritative once committed. A resolver failure may delay the event, but must not hold unit row locks.
         var events = new List<UnitStatusChanged>();
         foreach (var changedUnit in changed)
         {
@@ -57,7 +60,6 @@ public sealed class AssetService(
                 new UnitStatusRoute(tenantKey, changedUnit.SiteKey, changedUnit.Unit.Key)));
         }
 
-        await transaction.CommitAsync(cancellationToken);
         return events;
     }
 
