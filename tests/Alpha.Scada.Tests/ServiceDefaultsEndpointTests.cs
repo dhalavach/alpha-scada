@@ -70,6 +70,29 @@ public sealed class ServiceDefaultsEndpointTests(PostgresContainerFixture postgr
     }
 
     [Fact]
+    public async Task Exception_handler_returns_problem_details_without_exception_text()
+    {
+        var builder = WebApplication.CreateBuilder();
+        builder.WebHost.UseTestServer();
+        builder.Services.AddProblemDetails();
+        var app = builder.Build();
+        app.UseAlphaExceptionHandling();
+        app.MapGet("/throws", (Func<IResult>)(() =>
+            throw new InvalidOperationException("sensitive database detail")));
+        await app.StartAsync();
+        await using (app)
+        {
+            using var response = await app.GetTestClient().GetAsync("/throws");
+            var body = await response.Content.ReadAsStringAsync();
+
+            Assert.Equal(System.Net.HttpStatusCode.InternalServerError, response.StatusCode);
+            Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+            Assert.Contains("Unexpected error", body);
+            Assert.DoesNotContain("sensitive database detail", body);
+        }
+    }
+
+    [Fact]
     public async Task Migration_runner_records_migrations_once_and_keeps_seed_idempotent()
     {
         await WithPostgresAsync(async connectionString =>

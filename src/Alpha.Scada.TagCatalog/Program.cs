@@ -6,6 +6,7 @@ using Alpha.Scada.TagCatalog.Infrastructure;
 const string serviceName = "alpha-scada-tag-catalog";
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddProblemDetails();
 builder.Services.AddServiceDatabase(builder.Configuration);
 builder.Services.AddAlphaMigrator<TagCatalogMigrator>();
 builder.Services.AddSingleton<TagCatalogRepository>();
@@ -14,6 +15,7 @@ builder.Services.AddAlphaJwtAuthentication(builder.Configuration);
 
 var app = builder.Build();
 await app.ApplyAlphaMigrationsAsync();
+app.UseAlphaExceptionHandling();
 app.UseAlphaAuthorization();
 app.MapAlphaOperationalEndpoints(serviceName);
 

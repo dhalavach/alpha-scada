@@ -21,7 +21,7 @@ export default function TagMatrix({ groupedTags }: TagMatrixProps) {
             {subsystemTags.map(tag => (
               <div className="tagRow" key={tag.tagId}>
                 <span>{tag.name}</span>
-                <strong>{format(tag.value)} {tag.engineeringUnit}</strong>
+                <strong>{tag.value === null ? "--" : `${format(tag.value)} ${tag.engineeringUnit}`}</strong>
               </div>
             ))}
           </article>

@@ -7,10 +7,10 @@ public sealed record TagCurrentDto(
     string TagKey,
     string Name,
     string Subsystem,
-    double Value,
+    double? Value,
     string EngineeringUnit,
     string Quality,
-    DateTimeOffset TimestampUtc);
+    DateTimeOffset? TimestampUtc);
 
 public sealed record TagValueDto(
     Guid TagId,

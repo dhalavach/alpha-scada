@@ -21,6 +21,8 @@ public static class RoleRules
 {
     public static bool CanAcknowledge(string role) => role is Roles.Admin or Roles.Operator or Roles.SupportEngineer;
 
+    public static bool CanRunReports(string role) => role is Roles.Admin or Roles.Operator or Roles.SupportEngineer;
+
     public static bool IsSupport(string role) => role == Roles.SupportEngineer;
 
     public static bool IsService(string role) => role == Roles.Service;

@@ -7,6 +7,7 @@ using Alpha.Scada.ServiceDefaults.Messaging;
 const string serviceName = "alpha-scada-reporting";
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddProblemDetails();
 builder.Services.AddServiceDatabase(builder.Configuration);
 builder.Services.AddAlphaMigrator<ReportingMigrator>();
 builder.Services.AddSingleton<ReportingRepository>();
@@ -23,6 +24,7 @@ builder.Host.UseAlphaMessaging(serviceName, MessagingTopology.Configure);
 
 var app = builder.Build();
 await app.ApplyAlphaMigrationsAsync();
+app.UseAlphaExceptionHandling();
 app.UseAlphaAuthorization();
 app.MapAlphaOperationalEndpoints(serviceName);
 

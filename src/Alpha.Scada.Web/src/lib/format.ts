@@ -10,14 +10,15 @@ export const processSteps = [
 
 export function tagValue(tags: Tag[], key: string, unit: string) {
   const tag = tags.find(item => item.tagKey === key);
-  return tag ? `${format(tag.value)} ${unit}` : "--";
+  return tag?.value === null || tag === undefined ? "--" : `${format(tag.value)} ${unit}`;
 }
 
 export function unitName(units: Unit[], unitId: string) {
   return units.find(unit => unit.id === unitId)?.name ?? "Unit";
 }
 
-export function format(value: number) {
+export function format(value: number | null) {
+  if (value === null) return "--";
   return Number(value).toLocaleString(undefined, { maximumFractionDigits: 1 });
 }
 

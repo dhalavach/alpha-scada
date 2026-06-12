@@ -9,6 +9,7 @@ using Alpha.Scada.Telemetry.Infrastructure;
 const string serviceName = "alpha-scada-telemetry";
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddProblemDetails();
 builder.Services.AddServiceDatabase(builder.Configuration);
 builder.Services.AddAlphaMigrator<TelemetryMigrator>();
 builder.Services.AddSingleton<TelemetryRepository>();
@@ -32,6 +33,7 @@ builder.Host.UseAlphaMessaging(serviceName, MessagingTopology.Configure);
 
 var app = builder.Build();
 await app.ApplyAlphaMigrationsAsync();
+app.UseAlphaExceptionHandling();
 app.UseAlphaAuthorization();
 app.MapAlphaOperationalEndpoints(serviceName);
 

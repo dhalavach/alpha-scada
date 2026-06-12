@@ -6,6 +6,7 @@ using Alpha.Scada.ServiceDefaults;
 const string serviceName = "alpha-scada-identity";
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddProblemDetails();
 builder.Services.AddServiceDatabase(builder.Configuration);
 builder.Services.AddAlphaMigrator<IdentityMigrator>();
 builder.Services.AddSingleton<IdentityRepository>();
@@ -14,6 +15,7 @@ builder.Services.AddSingleton<AuthService>();
 
 var app = builder.Build();
 await app.ApplyAlphaMigrationsAsync();
+app.UseAlphaExceptionHandling();
 app.UseAlphaAuthorization();
 app.MapAlphaOperationalEndpoints(serviceName);
 

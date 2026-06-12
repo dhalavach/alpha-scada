@@ -5,6 +5,7 @@ using Alpha.Scada.Tenant.Infrastructure;
 const string serviceName = "alpha-scada-tenant";
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddProblemDetails();
 builder.Services.AddServiceDatabase(builder.Configuration);
 builder.Services.AddAlphaMigrator<TenantMigrator>();
 builder.Services.AddSingleton<TenantRepository>();
@@ -13,6 +14,7 @@ builder.Services.AddAlphaJwtAuthentication(builder.Configuration);
 
 var app = builder.Build();
 await app.ApplyAlphaMigrationsAsync();
+app.UseAlphaExceptionHandling();
 app.UseAlphaAuthorization();
 app.MapAlphaOperationalEndpoints(serviceName);
 

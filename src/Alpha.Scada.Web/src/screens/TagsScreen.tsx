@@ -57,9 +57,9 @@ export default function TagsScreen({
             <div className="tableRow" key={tag.tagId}>
               <span><strong>{tag.name}</strong><small>{tag.tagKey}</small></span>
               <span>{tag.subsystem}</span>
-              <span className="mono">{format(tag.value)} {tag.engineeringUnit}</span>
+              <span className="mono">{tag.value === null ? "--" : `${format(tag.value)} ${tag.engineeringUnit}`}</span>
               <span><Badge value={tag.quality} tone={tag.quality === "good" ? "good" : "warn"} /></span>
-              <span>{new Date(tag.timestampUtc).toLocaleTimeString()}</span>
+              <span>{tag.timestampUtc === null ? "--" : new Date(tag.timestampUtc).toLocaleTimeString()}</span>
             </div>
           ))}
         </div>

@@ -7,6 +7,7 @@ using Alpha.Scada.ServiceDefaults.Messaging;
 const string serviceName = "alpha-scada-asset";
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddProblemDetails();
 builder.Services.AddServiceDatabase(builder.Configuration);
 builder.Services.AddAlphaMigrator<AssetMigrator>();
 builder.Services.AddSingleton<AssetRepository>();
@@ -20,6 +21,7 @@ builder.Host.UseAlphaMessaging(serviceName, MessagingTopology.Configure);
 
 var app = builder.Build();
 await app.ApplyAlphaMigrationsAsync();
+app.UseAlphaExceptionHandling();
 app.UseAlphaAuthorization();
 app.MapAlphaOperationalEndpoints(serviceName);
 
