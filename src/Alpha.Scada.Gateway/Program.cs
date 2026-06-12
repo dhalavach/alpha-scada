@@ -8,6 +8,7 @@ const string serviceName = "alpha-scada-gateway";
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddProblemDetails();
+builder.Services.AddGatewayLoginRateLimiting();
 builder.Services.AddServiceDatabase(builder.Configuration);
 builder.Services.AddAlphaJwtAuthentication(builder.Configuration, options =>
 {
@@ -47,7 +48,9 @@ builder.Services.AddAlphaServiceClients(
 builder.Host.UseAlphaMessaging(serviceName, MessagingTopology.Configure);
 
 var app = builder.Build();
+app.UseForwardedHeaders();
 app.UseAlphaExceptionHandling();
+app.UseRateLimiter();
 app.UseCors();
 app.UseAlphaAuthorization();
 app.MapAlphaOperationalEndpoints(serviceName);

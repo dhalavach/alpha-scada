@@ -13,6 +13,8 @@ data:
 #
 # kubectl -n alpha-scada create secret generic alpha-scada-secrets \
 #   --from-literal=Jwt__Secret="$(openssl rand -hex 32)" \
+#   --from-literal=Jwt__PublicKeyB64="<base64-public-pem>" \
+#   --from-literal=Jwt__PrivateKeyB64="<identity-only-base64-private-pem>" \
 #   --from-literal=Nats__User="services" \
 #   --from-literal=Nats__Password="$(openssl rand -hex 24)" \
 #   --from-literal=NATS_PASSWORD_EDGE="$(openssl rand -hex 24)" \

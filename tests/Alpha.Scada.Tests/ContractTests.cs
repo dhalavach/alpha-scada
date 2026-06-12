@@ -45,16 +45,11 @@ public sealed class ContractTests
     [Fact]
     public void Jwt_service_issues_and_validates_user_claims()
     {
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["Jwt:Secret"] = "test-secret-test-secret-test-secret-32"
-            })
-            .Build();
+        var configuration = TestJwt.Configuration();
         var tokens = new JwtTokenService(configuration);
         var user = new UserDto(Guid.NewGuid(), Guid.NewGuid(), "admin@example.test", "Admin", Roles.Admin);
 
-        var response = tokens.Issue(user, TimeSpan.FromMinutes(5));
+        var response = tokens.IssueUserToken(user, TimeSpan.FromMinutes(5));
         var currentUser = tokens.Validate(response.AccessToken);
 
         Assert.NotNull(currentUser);

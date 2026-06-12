@@ -11,6 +11,7 @@ builder.Services.AddServiceDatabase(builder.Configuration);
 builder.Services.AddAlphaMigrator<IdentityMigrator>();
 builder.Services.AddSingleton<IdentityRepository>();
 builder.Services.AddAlphaJwtAuthentication(builder.Configuration);
+builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<AuthService>();
 
 var app = builder.Build();

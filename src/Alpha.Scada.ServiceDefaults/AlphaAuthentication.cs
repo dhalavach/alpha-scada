@@ -55,6 +55,27 @@ public static class AlphaAuthentication
                 options.MapInboundClaims = false;
                 options.TokenValidationParameters = JwtTokenService.CreateValidationParameters(configuration);
                 configure?.Invoke(options);
+                var configuredValidation = options.Events?.OnTokenValidated;
+                options.Events ??= new JwtBearerEvents();
+                options.Events.OnTokenValidated = async context =>
+                {
+                    if (configuredValidation is not null)
+                    {
+                        await configuredValidation(context);
+                    }
+
+                    var role = context.Principal?.FindFirstValue("role");
+                    var issuer = JwtTokenService.GetIssuer(context.SecurityToken);
+                    var algorithm = JwtTokenService.GetAlgorithm(context.SecurityToken);
+                    if (!JwtTokenService.HasCompatibleRoleAlgorithmAndIssuer(
+                            algorithm,
+                            role,
+                            issuer,
+                            configuration))
+                    {
+                        context.Fail("Token role, issuer, and signing algorithm are incompatible.");
+                    }
+                };
             });
         services.AddAuthorization(options =>
             options.AddPolicy(ServiceOnlyPolicy, policy => policy.RequireRole(Roles.Service)));

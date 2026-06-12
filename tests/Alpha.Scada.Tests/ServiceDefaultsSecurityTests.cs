@@ -24,7 +24,7 @@ public sealed class ServiceDefaultsSecurityTests
     {
         var tokens = new JwtTokenService(ConfigurationWithSecret());
         var user = new UserDto(Guid.NewGuid(), Guid.NewGuid(), "operator@example.test", "Operator", Roles.Operator);
-        var issued = tokens.Issue(user, TimeSpan.FromMinutes(5));
+        var issued = tokens.IssueUserToken(user, TimeSpan.FromMinutes(5));
 
         var current = tokens.Validate(issued.AccessToken);
 
@@ -61,11 +61,5 @@ public sealed class ServiceDefaultsSecurityTests
         Assert.Equal("Bearer copied", target.Headers.Authorization?.ToString());
     }
 
-    private static IConfiguration ConfigurationWithSecret() =>
-        new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["Jwt:Secret"] = "test-secret-test-secret-test-secret-32"
-            })
-            .Build();
+    private static IConfiguration ConfigurationWithSecret() => TestJwt.Configuration();
 }

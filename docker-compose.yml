@@ -10,6 +10,7 @@ services:
     environment:
       ASPNETCORE_URLS: http://+:8080
       Jwt__Secret: ${JWT_SECRET:?JWT_SECRET must be set in .env}
+      Jwt__PublicKeyB64: ${JWT_PUBLIC_KEY_B64:?JWT_PUBLIC_KEY_B64 must be set in .env}
       ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=alpha_gateway;Username=alpha;Password=alpha
       Nats__Url: nats://nats:4222
       Nats__User: ${NATS_USER_SERVICES:?NATS_USER_SERVICES must be set in .env}
@@ -57,6 +58,8 @@ services:
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=alpha_identity;Username=alpha;Password=alpha
       Jwt__Secret: ${JWT_SECRET:?JWT_SECRET must be set in .env}
+      Jwt__PublicKeyB64: ${JWT_PUBLIC_KEY_B64:?JWT_PUBLIC_KEY_B64 must be set in .env}
+      Jwt__PrivateKeyB64: ${JWT_PRIVATE_KEY_B64:?JWT_PRIVATE_KEY_B64 must be set in .env}
       Seed__DemoData: "true"
     networks:
       - alpha-internal
@@ -76,6 +79,7 @@ services:
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=alpha_tenant;Username=alpha;Password=alpha
       Jwt__Secret: ${JWT_SECRET:?JWT_SECRET must be set in .env}
+      Jwt__PublicKeyB64: ${JWT_PUBLIC_KEY_B64:?JWT_PUBLIC_KEY_B64 must be set in .env}
       Seed__DemoData: "true"
     networks:
       - alpha-internal
@@ -95,6 +99,7 @@ services:
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=alpha_asset;Username=alpha;Password=alpha
       Jwt__Secret: ${JWT_SECRET:?JWT_SECRET must be set in .env}
+      Jwt__PublicKeyB64: ${JWT_PUBLIC_KEY_B64:?JWT_PUBLIC_KEY_B64 must be set in .env}
       Nats__Url: nats://nats:4222
       Nats__User: ${NATS_USER_SERVICES:?NATS_USER_SERVICES must be set in .env}
       Nats__Password: ${NATS_PASSWORD_SERVICES:?NATS_PASSWORD_SERVICES must be set in .env}
@@ -122,6 +127,7 @@ services:
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=alpha_tag_catalog;Username=alpha;Password=alpha
       Jwt__Secret: ${JWT_SECRET:?JWT_SECRET must be set in .env}
+      Jwt__PublicKeyB64: ${JWT_PUBLIC_KEY_B64:?JWT_PUBLIC_KEY_B64 must be set in .env}
       Seed__DemoData: "true"
     networks:
       - alpha-internal
@@ -141,6 +147,7 @@ services:
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=alpha_telemetry;Username=alpha;Password=alpha;Maximum Pool Size=100
       Jwt__Secret: ${JWT_SECRET:?JWT_SECRET must be set in .env}
+      Jwt__PublicKeyB64: ${JWT_PUBLIC_KEY_B64:?JWT_PUBLIC_KEY_B64 must be set in .env}
       Nats__Url: nats://nats:4222
       Nats__User: ${NATS_USER_SERVICES:?NATS_USER_SERVICES must be set in .env}
       Nats__Password: ${NATS_PASSWORD_SERVICES:?NATS_PASSWORD_SERVICES must be set in .env}
@@ -175,6 +182,7 @@ services:
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=alpha_alarm;Username=alpha;Password=alpha
       Jwt__Secret: ${JWT_SECRET:?JWT_SECRET must be set in .env}
+      Jwt__PublicKeyB64: ${JWT_PUBLIC_KEY_B64:?JWT_PUBLIC_KEY_B64 must be set in .env}
       Nats__Url: nats://nats:4222
       Nats__User: ${NATS_USER_SERVICES:?NATS_USER_SERVICES must be set in .env}
       Nats__Password: ${NATS_PASSWORD_SERVICES:?NATS_PASSWORD_SERVICES must be set in .env}
@@ -210,6 +218,7 @@ services:
       Nats__User: ${NATS_USER_SERVICES:?NATS_USER_SERVICES must be set in .env}
       Nats__Password: ${NATS_PASSWORD_SERVICES:?NATS_PASSWORD_SERVICES must be set in .env}
       Jwt__Secret: ${JWT_SECRET:?JWT_SECRET must be set in .env}
+      Jwt__PublicKeyB64: ${JWT_PUBLIC_KEY_B64:?JWT_PUBLIC_KEY_B64 must be set in .env}
       Services__Asset: http://asset:8080
       Services__Telemetry: http://telemetry:8080
       Services__Alarm: http://alarm:8080

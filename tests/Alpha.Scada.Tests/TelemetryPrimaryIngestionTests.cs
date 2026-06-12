@@ -305,16 +305,13 @@ public sealed class TelemetryPrimaryIngestionTests(PostgresContainerFixture post
 
     private static IHost BuildTelemetryHost(string connectionString, string natsUrl, string catalogBaseAddress)
     {
-        var settings = new Dictionary<string, string?>
-        {
-            ["ConnectionStrings:Postgres"] = connectionString,
-            ["Jwt:Secret"] = "test-secret-test-secret-test-secret-32",
-            ["Nats:Url"] = natsUrl,
-            ["Services:Tenant"] = catalogBaseAddress,
-            ["Services:Asset"] = catalogBaseAddress,
-            ["Services:TagCatalog"] = catalogBaseAddress,
-            ["Telemetry:Ingestion:MaxDegreeOfParallelism"] = "8"
-        };
+        var settings = TestJwt.Settings(
+            ("ConnectionStrings:Postgres", connectionString),
+            ("Nats:Url", natsUrl),
+            ("Services:Tenant", catalogBaseAddress),
+            ("Services:Asset", catalogBaseAddress),
+            ("Services:TagCatalog", catalogBaseAddress),
+            ("Telemetry:Ingestion:MaxDegreeOfParallelism", "8"));
 
         return Host.CreateDefaultBuilder()
             .ConfigureAppConfiguration(config => config.AddInMemoryCollection(settings))

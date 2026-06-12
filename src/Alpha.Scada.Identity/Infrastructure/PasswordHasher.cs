@@ -6,7 +6,7 @@ public static class PasswordHasher
 {
     private const int SaltSize = 16;
     private const int KeySize = 32;
-    private const int Iterations = 100_000;
+    public const int Iterations = 600_000;
 
     public static string Hash(string password)
     {
@@ -35,5 +35,14 @@ public static class PasswordHasher
         {
             return false;
         }
+    }
+
+    public static bool NeedsRehash(string hash)
+    {
+        var parts = hash.Split('.');
+        return parts.Length != 4
+            || parts[0] != "pbkdf2-sha256"
+            || !int.TryParse(parts[1], out var iterations)
+            || iterations < Iterations;
     }
 }

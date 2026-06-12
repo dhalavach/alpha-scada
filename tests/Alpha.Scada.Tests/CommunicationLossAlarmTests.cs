@@ -129,14 +129,11 @@ public sealed class CommunicationLossAlarmTests(PostgresContainerFixture postgre
 
     private static IHost BuildAlarmHost(string connectionString, string natsUrl, string routeBaseAddress)
     {
-        var settings = new Dictionary<string, string?>
-        {
-            ["ConnectionStrings:Postgres"] = connectionString,
-            ["Jwt:Secret"] = "test-secret-test-secret-test-secret-32",
-            ["Nats:Url"] = natsUrl,
-            ["Services:Asset"] = routeBaseAddress,
-            ["Services:Tenant"] = routeBaseAddress
-        };
+        var settings = TestJwt.Settings(
+            ("ConnectionStrings:Postgres", connectionString),
+            ("Nats:Url", natsUrl),
+            ("Services:Asset", routeBaseAddress),
+            ("Services:Tenant", routeBaseAddress));
 
         return Host.CreateDefaultBuilder()
             .ConfigureAppConfiguration(config => config.AddInMemoryCollection(settings))

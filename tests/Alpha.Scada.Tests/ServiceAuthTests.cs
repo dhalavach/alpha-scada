@@ -28,7 +28,7 @@ public sealed class ServiceAuthTests
         {
             using var client = app.GetTestClient();
             var tokens = new JwtTokenService(configuration);
-            var userToken = tokens.Issue(new UserDto(Guid.NewGuid(), Guid.NewGuid(), "viewer@example.test", "Viewer", Roles.Viewer), TimeSpan.FromMinutes(5)).AccessToken;
+            var userToken = tokens.IssueUserToken(new UserDto(Guid.NewGuid(), Guid.NewGuid(), "viewer@example.test", "Viewer", Roles.Viewer), TimeSpan.FromMinutes(5)).AccessToken;
             var serviceToken = new ServiceTokenProvider(tokens).GetToken();
 
             var anonymous = await client.GetAsync("/service-only");
@@ -38,6 +38,42 @@ public sealed class ServiceAuthTests
             Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
             Assert.Equal(HttpStatusCode.Forbidden, user.StatusCode);
             Assert.Equal(HttpStatusCode.OK, service.StatusCode);
+        }
+    }
+
+    [Fact]
+    public async Task Authentication_binds_roles_to_algorithm_and_issuer()
+    {
+        var configuration = ConfigurationWithSecret();
+        var builder = WebApplication.CreateBuilder();
+        builder.WebHost.UseTestServer();
+        builder.Configuration.AddConfiguration(configuration);
+        builder.Services.AddAlphaJwtAuthentication(builder.Configuration);
+        var app = builder.Build();
+        app.UseAlphaAuthorization();
+        app.MapGet("/protected", () => Results.Ok()).RequireAuthorization();
+        await app.StartAsync();
+        await using (app)
+        {
+            using var client = app.GetTestClient();
+
+            var rsUser = await client.SendAsync(TokenRequest(TestJwt.CreateToken(Roles.Admin, useServiceKey: false), "/protected"));
+            var hsService = await client.SendAsync(TokenRequest(TestJwt.CreateToken(Roles.Service, useServiceKey: true), "/protected"));
+            var forgedHsAdmin = await client.SendAsync(TokenRequest(TestJwt.CreateToken(Roles.Admin, useServiceKey: true), "/protected"));
+            var wrongIssuer = await client.SendAsync(TokenRequest(TestJwt.CreateToken(
+                Roles.Admin,
+                useServiceKey: false,
+                issuer: "other-issuer"), "/protected"));
+            var wrongAudience = await client.SendAsync(TokenRequest(TestJwt.CreateToken(
+                Roles.Admin,
+                useServiceKey: false,
+                audience: "other-audience"), "/protected"));
+
+            Assert.Equal(HttpStatusCode.OK, rsUser.StatusCode);
+            Assert.Equal(HttpStatusCode.OK, hsService.StatusCode);
+            Assert.Equal(HttpStatusCode.Unauthorized, forgedHsAdmin.StatusCode);
+            Assert.Equal(HttpStatusCode.Unauthorized, wrongIssuer.StatusCode);
+            Assert.Equal(HttpStatusCode.Unauthorized, wrongAudience.StatusCode);
         }
     }
 
@@ -86,20 +122,14 @@ public sealed class ServiceAuthTests
         Assert.Equal(first, second);
     }
 
-    private static HttpRequestMessage TokenRequest(string token)
+    private static HttpRequestMessage TokenRequest(string token, string path = "/service-only")
     {
-        var request = new HttpRequestMessage(HttpMethod.Get, "/service-only");
+        var request = new HttpRequestMessage(HttpMethod.Get, path);
         request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
         return request;
     }
 
-    private static IConfiguration ConfigurationWithSecret() =>
-        new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["Jwt:Secret"] = "test-secret-test-secret-test-secret-32"
-            })
-            .Build();
+    private static IConfiguration ConfigurationWithSecret() => TestJwt.Configuration();
 
     private sealed class CaptureHandler : HttpMessageHandler
     {

@@ -13,7 +13,8 @@ public static class GatewayEndpoints
 {
     public static WebApplication MapGatewayEndpoints(this WebApplication app)
     {
-        app.MapPost("/api/auth/login", LoginAsync);
+        app.MapPost("/api/auth/login", LoginAsync)
+            .RequireRateLimiting(GatewayRateLimiting.LoginPolicy);
 
         var api = app.MapGroup("/api").RequireAuthorization();
 

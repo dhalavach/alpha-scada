@@ -171,13 +171,10 @@ public sealed class AlarmOutboxTests(PostgresContainerFixture postgres)
 
     private static ServiceProvider BuildServiceProvider(string connectionString, string routeBaseAddress)
     {
-        var settings = new Dictionary<string, string?>
-        {
-            ["ConnectionStrings:Postgres"] = connectionString,
-            ["Jwt:Secret"] = "test-secret-test-secret-test-secret-32",
-            ["Services:Asset"] = routeBaseAddress,
-            ["Services:Tenant"] = routeBaseAddress
-        };
+        var settings = TestJwt.Settings(
+            ("ConnectionStrings:Postgres", connectionString),
+            ("Services:Asset", routeBaseAddress),
+            ("Services:Tenant", routeBaseAddress));
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
         var services = new ServiceCollection();
         services.AddSingleton<IConfiguration>(configuration);

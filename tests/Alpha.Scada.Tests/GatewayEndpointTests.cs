@@ -110,6 +110,28 @@ public sealed class GatewayEndpointTests
     }
 
     [Fact]
+    public async Task Login_rate_limit_rejects_eleventh_request_in_window()
+    {
+        var fixture = await BuildAppAsync(Roles.Operator, (_, _, _) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.Unauthorized)));
+        await using var app = fixture.App;
+        using var client = app.GetTestClient();
+
+        for (var attempt = 0; attempt < 10; attempt++)
+        {
+            using var allowed = await client.PostAsJsonAsync(
+                "/api/auth/login",
+                new LoginRequest("user@example.test", "wrong"));
+            Assert.Equal(HttpStatusCode.Unauthorized, allowed.StatusCode);
+        }
+
+        using var limited = await client.PostAsJsonAsync(
+            "/api/auth/login",
+            new LoginRequest("user@example.test", "wrong"));
+        Assert.Equal(HttpStatusCode.TooManyRequests, limited.StatusCode);
+    }
+
+    [Fact]
     public async Task Current_tag_fanout_runs_concurrently_and_returns_null_for_missing_values()
     {
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -168,6 +190,7 @@ public sealed class GatewayEndpointTests
         builder.WebHost.UseTestServer();
         builder.Configuration.AddConfiguration(configuration);
         builder.Services.AddProblemDetails();
+        builder.Services.AddGatewayLoginRateLimiting();
         builder.Services.AddAlphaJwtAuthentication(builder.Configuration);
         builder.Services.AddSingleton<IHttpClientFactory>(
             new StubHttpClientFactory(responder ?? ((_, _, _) =>
@@ -176,11 +199,12 @@ public sealed class GatewayEndpointTests
 
         var app = builder.Build();
         app.UseAlphaExceptionHandling();
+        app.UseRateLimiter();
         app.UseAlphaAuthorization();
         app.MapGatewayEndpoints();
         await app.StartAsync();
 
-        var token = new JwtTokenService(configuration).Issue(
+        var token = new JwtTokenService(configuration).IssueUserToken(
             new UserDto(Guid.NewGuid(), TenantId, "user@example.test", "Test User", role),
             TimeSpan.FromMinutes(5)).AccessToken;
         return (app, token);
@@ -196,13 +220,7 @@ public sealed class GatewayEndpointTests
     private static HttpResponseMessage JsonResponse<T>(T value) =>
         new(HttpStatusCode.OK) { Content = JsonContent.Create(value) };
 
-    private static IConfiguration Configuration() =>
-        new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["Jwt:Secret"] = "test-secret-test-secret-test-secret-32"
-            })
-            .Build();
+    private static IConfiguration Configuration() => TestJwt.Configuration();
 
     private sealed class StubHttpClientFactory(
         Func<string, HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> responder) : IHttpClientFactory

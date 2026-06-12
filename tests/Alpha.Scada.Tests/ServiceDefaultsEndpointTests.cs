@@ -116,13 +116,7 @@ public sealed class ServiceDefaultsEndpointTests(PostgresContainerFixture postgr
     [Fact]
     public void Service_client_registration_uses_configured_endpoint_options()
     {
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["Jwt:Secret"] = "test-secret-test-secret-test-secret-32",
-                ["Services:Asset"] = "http://asset:8080"
-            })
-            .Build();
+        var configuration = TestJwt.Configuration(("Services:Asset", "http://asset:8080"));
         using var provider = new ServiceCollection()
             .AddAlphaServiceClients(configuration, AlphaServiceClients.Asset)
             .BuildServiceProvider();
@@ -167,7 +161,7 @@ public sealed class ServiceDefaultsEndpointTests(PostgresContainerFixture postgr
         app.Services.GetRequiredService<ILoggerFactory>()
             .CreateLogger<ServiceDefaultsEndpointTests>()
             .LogDebug("Issued test token for {Role}.", role);
-        return (app, tokens.Issue(user, TimeSpan.FromMinutes(5)).AccessToken);
+        return (app, tokens.IssueUserToken(user, TimeSpan.FromMinutes(5)).AccessToken);
     }
 
     private static HttpRequestMessage TokenRequest(HttpMethod method, string path, string token)
@@ -177,13 +171,7 @@ public sealed class ServiceDefaultsEndpointTests(PostgresContainerFixture postgr
         return request;
     }
 
-    private static IConfiguration ConfigurationWithSecret() =>
-        new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["Jwt:Secret"] = "test-secret-test-secret-test-secret-32"
-            })
-            .Build();
+    private static IConfiguration ConfigurationWithSecret() => TestJwt.Configuration();
 
     private static async Task<long> CountAsync(NpgsqlDataSource dataSource, string sql)
     {

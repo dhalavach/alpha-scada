@@ -13,7 +13,12 @@ public sealed class IdentityMigrator(
 {
     protected override IReadOnlyList<SqlMigration> Migrations { get; } =
     [
-        new("001_initial", SchemaSql)
+        new("001_initial", SchemaSql),
+        new("002_lockout", """
+            alter table users
+                add column if not exists failed_login_count int not null default 0,
+                add column if not exists locked_until_utc timestamptz;
+            """)
     ];
 
     protected override async Task SeedAsync(NpgsqlConnection connection, CancellationToken cancellationToken)

@@ -18,7 +18,7 @@ public sealed class ServiceTokenProvider(JwtTokenService tokens)
             if (current is null || current.ExpiresAtUtc - RenewalSkew <= DateTimeOffset.UtcNow)
             {
                 var serviceName = Assembly.GetEntryAssembly()?.GetName().Name ?? "alpha-service";
-                current = tokens.Issue(
+                current = tokens.IssueServiceToken(
                     new UserDto(principalId, Guid.Empty, $"{serviceName}@internal", serviceName, Roles.Service),
                     Lifetime);
             }

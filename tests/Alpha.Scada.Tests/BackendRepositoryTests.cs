@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using Alpha.Scada.Contracts;
 using Alpha.Scada.Identity.Application;
 using Alpha.Scada.Identity.Infrastructure;
@@ -76,20 +77,14 @@ public sealed class BackendRepositoryTests(PostgresContainerFixture postgres)
         await WithPostgresAsync(async connectionString =>
         {
             await using var dataSource = NpgsqlDataSource.Create(connectionString);
-            var configuration = new ConfigurationBuilder()
-                .AddInMemoryCollection(new Dictionary<string, string?>
-                {
-                    ["Jwt:Secret"] = "test-secret-test-secret-test-secret-32",
-                    ["Seed:DemoData"] = "true"
-                })
-                .Build();
+            var configuration = TestJwt.Configuration(("Seed:DemoData", "true"));
             await new IdentityMigrator(
                 dataSource,
                 configuration,
                 new TestHostEnvironment(),
                 NullLogger<IdentityMigrator>.Instance).MigrateAsync(CancellationToken.None);
             var repository = new IdentityRepository(dataSource);
-            var service = new AuthService(repository, new JwtTokenService(configuration));
+            var service = new AuthService(repository, new JwtTokenService(configuration), TimeProvider.System);
 
             var success = await service.LoginAsync(new LoginRequest("ADMIN@alpha.local", "ChangeMe!123"), CancellationToken.None);
             var failure = await service.LoginAsync(new LoginRequest("admin@alpha.local", "wrong"), CancellationToken.None);
@@ -97,6 +92,71 @@ public sealed class BackendRepositoryTests(PostgresContainerFixture postgres)
             Assert.NotNull(success);
             Assert.Null(failure);
             Assert.Equal(2, await CountRowsAsync(connectionString, "audit_events"));
+        });
+    }
+
+    [Fact]
+    public async Task Identity_locks_account_after_five_failures_and_allows_login_after_expiry()
+    {
+        await WithPostgresAsync(async connectionString =>
+        {
+            await using var dataSource = NpgsqlDataSource.Create(connectionString);
+            var configuration = TestJwt.Configuration(("Seed:DemoData", "true"));
+            await new IdentityMigrator(
+                dataSource,
+                configuration,
+                new TestHostEnvironment(),
+                NullLogger<IdentityMigrator>.Instance).MigrateAsync(CancellationToken.None);
+            var repository = new IdentityRepository(dataSource);
+            var service = new AuthService(repository, new JwtTokenService(configuration), TimeProvider.System);
+
+            for (var attempt = 0; attempt < 5; attempt++)
+            {
+                Assert.Null(await service.LoginAsync(
+                    new LoginRequest("admin@alpha.local", "wrong"),
+                    CancellationToken.None));
+            }
+
+            Assert.Null(await service.LoginAsync(
+                new LoginRequest("admin@alpha.local", "ChangeMe!123"),
+                CancellationToken.None));
+            Assert.Equal(1, await CountAuditAsync(connectionString, "auth.login_locked"));
+
+            await ExpireLockoutAsync(connectionString, "admin@alpha.local");
+            Assert.NotNull(await service.LoginAsync(
+                new LoginRequest("admin@alpha.local", "ChangeMe!123"),
+                CancellationToken.None));
+            Assert.Equal(0, await FailedLoginCountAsync(connectionString, "admin@alpha.local"));
+        });
+    }
+
+    [Fact]
+    public async Task Successful_login_transparently_rehashes_legacy_password()
+    {
+        await WithPostgresAsync(async connectionString =>
+        {
+            await using var dataSource = NpgsqlDataSource.Create(connectionString);
+            var configuration = TestJwt.Configuration(("Seed:DemoData", "true"));
+            await new IdentityMigrator(
+                dataSource,
+                configuration,
+                new TestHostEnvironment(),
+                NullLogger<IdentityMigrator>.Instance).MigrateAsync(CancellationToken.None);
+            await SetPasswordHashAsync(
+                connectionString,
+                "admin@alpha.local",
+                LegacyPasswordHash("ChangeMe!123", 100_000));
+            var repository = new IdentityRepository(dataSource);
+            var service = new AuthService(repository, new JwtTokenService(configuration), TimeProvider.System);
+
+            var login = await service.LoginAsync(
+                new LoginRequest("admin@alpha.local", "ChangeMe!123"),
+                CancellationToken.None);
+            var upgraded = await PasswordHashAsync(connectionString, "admin@alpha.local");
+
+            Assert.NotNull(login);
+            Assert.False(PasswordHasher.NeedsRehash(upgraded));
+            Assert.Contains($".{PasswordHasher.Iterations}.", upgraded);
         });
     }
 
@@ -202,6 +262,78 @@ public sealed class BackendRepositoryTests(PostgresContainerFixture postgres)
         await connection.OpenAsync();
         await using var command = new NpgsqlCommand($"select count(*) from {tableName}", connection);
         return Convert.ToInt32(await command.ExecuteScalarAsync());
+    }
+
+    private static async Task<int> CountAuditAsync(string connectionString, string eventType)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand(
+            "select count(*) from audit_events where event_type = @event_type",
+            connection);
+        command.Parameters.AddWithValue("event_type", eventType);
+        return Convert.ToInt32(await command.ExecuteScalarAsync());
+    }
+
+    private static async Task ExpireLockoutAsync(string connectionString, string email)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand("""
+            update users
+            set locked_until_utc = now() - interval '1 minute'
+            where lower(email) = lower(@email)
+            """, connection);
+        command.Parameters.AddWithValue("email", email);
+        await command.ExecuteNonQueryAsync();
+    }
+
+    private static async Task<int> FailedLoginCountAsync(string connectionString, string email)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand(
+            "select failed_login_count from users where lower(email) = lower(@email)",
+            connection);
+        command.Parameters.AddWithValue("email", email);
+        return Convert.ToInt32(await command.ExecuteScalarAsync());
+    }
+
+    private static async Task SetPasswordHashAsync(string connectionString, string email, string passwordHash)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand("""
+            update users
+            set password_hash = @password_hash
+            where lower(email) = lower(@email)
+            """, connection);
+        command.Parameters.AddWithValue("email", email);
+        command.Parameters.AddWithValue("password_hash", passwordHash);
+        await command.ExecuteNonQueryAsync();
+    }
+
+    private static async Task<string> PasswordHashAsync(string connectionString, string email)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand(
+            "select password_hash from users where lower(email) = lower(@email)",
+            connection);
+        command.Parameters.AddWithValue("email", email);
+        return (string)(await command.ExecuteScalarAsync() ?? string.Empty);
+    }
+
+    private static string LegacyPasswordHash(string password, int iterations)
+    {
+        var salt = RandomNumberGenerator.GetBytes(16);
+        var key = Rfc2898DeriveBytes.Pbkdf2(
+            password,
+            salt,
+            iterations,
+            HashAlgorithmName.SHA256,
+            32);
+        return $"pbkdf2-sha256.{iterations}.{Convert.ToBase64String(salt)}.{Convert.ToBase64String(key)}";
     }
 
 }
