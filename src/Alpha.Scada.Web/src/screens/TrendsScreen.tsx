@@ -39,13 +39,13 @@ export default function TrendsScreen({
             <select value={selectedTagId} onChange={event => setSelectedTagId(event.target.value)}>
               {tags.map(tag => <option key={tag.tagId} value={tag.tagId}>{tag.name}</option>)}
             </select>
-            {[15, 30, 60, 240].map(minutes => (
+            {[15, 30, 60, 240, 1440].map(minutes => (
               <button
                 className={trendWindow === minutes ? "segmented active" : "segmented"}
                 key={minutes}
                 onClick={() => setTrendWindow(minutes)}
               >
-                {minutes}m
+                {minutes === 1440 ? "24h" : `${minutes}m`}
               </button>
             ))}
             <button className="iconButton" onClick={refresh}>Refresh</button>
@@ -77,7 +77,12 @@ export default function TrendsScreen({
             <div className="tableRow" key={`${point.timestampUtc}-${point.value}`}>
               <span>{new Date(point.timestampUtc).toLocaleTimeString()}</span>
               <span className="mono">{format(point.value)} {selectedTag?.engineeringUnit}</span>
-              <span><Badge value={point.quality} tone={point.quality === "good" ? "good" : "warn"} /></span>
+              <span>
+                <Badge
+                  value={point.quality}
+                  tone={point.quality === "good" ? "good" : point.quality === "aggregated" ? "neutral" : "warn"}
+                />
+              </span>
             </div>
           ))}
         </div>

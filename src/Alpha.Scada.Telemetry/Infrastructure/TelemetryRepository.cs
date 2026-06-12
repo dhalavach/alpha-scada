@@ -7,6 +7,8 @@ namespace Alpha.Scada.Telemetry.Infrastructure;
 
 public sealed class TelemetryRepository(NpgsqlDataSource dataSource)
 {
+    public const int HistoryPointLimit = 2_000;
+    private static readonly TimeSpan RawHistoryWindow = TimeSpan.FromMinutes(30);
 
     public async Task IngestAsync(
         TelemetryIngestRequest request,
@@ -105,18 +107,47 @@ public sealed class TelemetryRepository(NpgsqlDataSource dataSource)
     public async Task<IReadOnlyCollection<TelemetryHistoryPointDto>> GetHistoryAsync(Guid tagId, TimeSpan window, CurrentUserDto user, CancellationToken cancellationToken)
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        await using var command = new NpgsqlCommand("""
-            select timestamp_utc, value_double, quality
-            from telemetry_samples
-            where tag_id = @tag_id
-              and timestamp_utc >= @cutoff
-              and (@is_support or tenant_id = @tenant_id)
-            order by timestamp_utc
-            """, connection);
+        var sql = window <= RawHistoryWindow
+            ? """
+              select timestamp_utc, value_double, quality
+              from (
+                  select timestamp_utc, value_double, quality
+                  from telemetry_samples
+                  where tag_id = @tag_id
+                    and timestamp_utc >= @cutoff
+                    and (@is_support or tenant_id = @tenant_id)
+                  order by timestamp_utc desc
+                  limit @point_limit
+              ) recent
+              order by timestamp_utc
+              """
+            : """
+              select minute_utc, value_avg, 'aggregated'
+              from (
+                  select minute.minute_utc, minute.value_avg
+                  from telemetry_minute minute
+                  where minute.tag_id = @tag_id
+                    and minute.minute_utc >= @cutoff
+                    and (
+                        @is_support
+                        or exists (
+                            select 1
+                            from tag_current current
+                            where current.tag_id = @tag_id
+                              and current.tenant_id = @tenant_id
+                        )
+                    )
+                  order by minute.minute_utc desc
+                  limit @point_limit
+              ) recent
+              order by minute_utc
+              """;
+        await using var command = new NpgsqlCommand(sql, connection);
         command.Parameters.AddWithValue("tag_id", tagId);
         command.Parameters.AddWithValue("cutoff", DateTimeOffset.UtcNow.Subtract(window));
         command.Parameters.AddWithValue("tenant_id", user.TenantId);
         command.Parameters.AddWithValue("is_support", RoleRules.IsSupport(user.Role));
+        command.Parameters.AddWithValue("point_limit", HistoryPointLimit);
         var results = new List<TelemetryHistoryPointDto>();
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))

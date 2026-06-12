@@ -535,6 +535,12 @@ h3 {
   color: #ffcf78;
 }
 
+.badge.neutral {
+  background: rgba(142, 160, 170, 0.1);
+  border-color: rgba(142, 160, 170, 0.42);
+  color: #b7c4ca;
+}
+
 .trendChart {
   background:
     linear-gradient(rgba(32, 214, 199, 0.045) 1px, transparent 1px),

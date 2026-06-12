@@ -1,6 +1,6 @@
 type BadgeProps = {
   value: string;
-  tone: "good" | "warn";
+  tone: "good" | "warn" | "neutral";
 };
 
 export default function Badge({ value, tone }: BadgeProps) {
