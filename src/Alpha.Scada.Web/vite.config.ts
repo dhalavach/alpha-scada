@@ -9,7 +9,6 @@ export default defineConfig({
       "/api": "http://localhost:5202",
       "/health": "http://localhost:5202",
       "/ready": "http://localhost:5202",
-      "/metrics": "http://localhost:5202",
       "/hubs": {
         target: "http://localhost:5202",
         ws: true

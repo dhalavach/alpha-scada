@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
-import { apiBase, authHeaders, getJson, tokenKey } from "./api/client";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { ApiError, apiBase, authHeaders, getJson, postJson, setUnauthorizedHandler, tokenKey } from "./api/client";
 import type { Alarm, HistoryPoint, LoginResponse, Report, ScreenName, Site, SystemProbe, Tag, TelemetryUpdate, Tenant, Unit, User } from "./api/types";
 import StatPill from "./components/StatPill";
 import StatusBadge from "./components/StatusBadge";
 import useSignalR from "./hooks/useSignalR";
 import { groupBy } from "./lib/format";
+import { canAcknowledge, canRunReports, canViewAdmin } from "./lib/roles";
 import AdminScreen from "./screens/AdminScreen";
 import AlarmsScreen from "./screens/AlarmsScreen";
 import Login from "./screens/Login";
@@ -35,7 +36,8 @@ export default function App() {
   const [trendWindow, setTrendWindow] = useState(30);
   const [history, setHistory] = useState<HistoryPoint[]>([]);
   const [historyStatus, setHistoryStatus] = useState("Idle");
-  const [system, setSystem] = useState<SystemProbe>({ health: "unknown", ready: "unknown", metrics: "" });
+  const [system, setSystem] = useState<SystemProbe>({ health: "unknown", ready: "unknown" });
+  const [appError, setAppError] = useState("");
 
   const selectedSite = sites.find(site => site.id === selectedSiteId) ?? sites[0];
   const selectedUnit = units.find(unit => unit.id === selectedUnitId);
@@ -44,6 +46,9 @@ export default function App() {
   const subsystems = useMemo(() => Object.keys(groupedTags).sort(), [groupedTags]);
   const updatedAt = tags[0]?.timestampUtc ? new Date(tags[0].timestampUtc).toLocaleTimeString() : "--";
   const onlineUnits = units.filter(unit => unit.status.toLowerCase() === "online").length;
+  const mayAcknowledge = canAcknowledge(user?.role);
+  const mayRunReports = canRunReports(user?.role);
+  const visibleNavItems = navItems.filter(item => item !== "Admin" || canViewAdmin(user?.role));
 
   const filteredTags = useMemo(() => {
     const needle = tagSearch.trim().toLowerCase();
@@ -57,10 +62,37 @@ export default function App() {
     });
   }, [tags, tagSearch, subsystemFilter]);
 
+  const loadHistory = useCallback(async () => {
+    if (!selectedTrendTagId) return;
+    setHistoryStatus("Loading");
+    try {
+      const points = await getJson<HistoryPoint[]>(`/api/tags/${selectedTrendTagId}/history?minutes=${trendWindow}`, token);
+      setHistory(points);
+      setHistoryStatus("Ready");
+    } catch (error) {
+      setHistory([]);
+      setHistoryStatus("Failed");
+      if (!(error instanceof ApiError && error.status === 401)) {
+        setAppError("Unable to load telemetry history.");
+      }
+    }
+  }, [selectedTrendTagId, token, trendWindow]);
+
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      localStorage.removeItem(tokenKey);
+      setToken("");
+      setUser(null);
+      setAppError("");
+    });
+    return () => setUnauthorizedHandler();
+  }, []);
+
   useEffect(() => {
     if (!token) return;
-    loadInitial();
-  }, [token]);
+    void loadInitial();
+    // Initial loading intentionally follows token changes; loader callbacks retain the existing state/load order.
+  }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useSignalR({
     token,
@@ -73,8 +105,8 @@ export default function App() {
 
   useEffect(() => {
     if (!token || activeScreen !== "Trends" || !selectedTrendTagId) return;
-    loadHistory();
-  }, [token, activeScreen, selectedTrendTagId, trendWindow]);
+    void loadHistory();
+  }, [token, activeScreen, selectedTrendTagId, trendWindow, loadHistory]);
 
   async function login(email: string, password: string) {
     const response = await fetch(`${apiBase}/api/auth/login`, {
@@ -88,6 +120,7 @@ export default function App() {
 
     const body = await response.json() as LoginResponse;
     localStorage.setItem(tokenKey, body.accessToken);
+    setAppError("");
     setToken(body.accessToken);
     setUser({
       userId: body.user.id,
@@ -99,23 +132,32 @@ export default function App() {
   }
 
   async function logout() {
-    if (token) {
-      await fetch(`${apiBase}/api/auth/logout`, { method: "POST", headers: authHeaders(token) });
+    try {
+      if (token) {
+        await fetch(`${apiBase}/api/auth/logout`, { method: "POST", headers: authHeaders(token) });
+      }
+    } finally {
+      localStorage.removeItem(tokenKey);
+      setToken("");
+      setUser(null);
+      setAppError("");
     }
-    localStorage.removeItem(tokenKey);
-    setToken("");
-    setUser(null);
   }
 
   async function loadInitial() {
-    const [me, nextTenants] = await Promise.all([
-      getJson<User>("/api/me", token),
-      getJson<Tenant[]>("/api/tenants", token)
-    ]);
-    setUser(me);
-    setTenants(nextTenants);
-    await loadSitesAndUnits();
-    await Promise.all([loadAlarms(), loadReports(), loadSystem()]);
+    setAppError("");
+    try {
+      const [me, nextTenants] = await Promise.all([
+        getJson<User>("/api/me", token),
+        getJson<Tenant[]>("/api/tenants", token)
+      ]);
+      setUser(me);
+      setTenants(nextTenants);
+      await loadSitesAndUnits();
+      await Promise.all([loadAlarms(), loadReports(), loadSystem()]);
+    } catch (error) {
+      showError(error, "Unable to load the SCADA workspace.");
+    }
   }
 
   async function loadSitesAndUnits() {
@@ -190,30 +232,15 @@ export default function App() {
     setReports(await getJson<Report[]>("/api/reports/monthly", token));
   }
 
-  async function loadHistory() {
-    if (!selectedTrendTagId) return;
-    setHistoryStatus("Loading");
-    try {
-      const points = await getJson<HistoryPoint[]>(`/api/tags/${selectedTrendTagId}/history?minutes=${trendWindow}`, token);
-      setHistory(points);
-      setHistoryStatus("Ready");
-    } catch {
-      setHistory([]);
-      setHistoryStatus("Failed");
-    }
-  }
-
   async function loadSystem() {
-    const [healthResult, readyResult, metricsResult] = await Promise.allSettled([
+    const [healthResult, readyResult] = await Promise.allSettled([
       fetch(`${apiBase}/health`).then(response => response.ok ? response.json() : Promise.reject()),
-      fetch(`${apiBase}/ready`).then(response => response.ok ? response.json() : Promise.reject()),
-      fetch(`${apiBase}/metrics`).then(response => response.ok ? response.text() : Promise.reject())
+      fetch(`${apiBase}/ready`).then(response => response.ok ? response.json() : Promise.reject())
     ]);
 
     setSystem({
       health: healthResult.status === "fulfilled" ? healthResult.value.status ?? "ok" : "failed",
-      ready: readyResult.status === "fulfilled" ? readyResult.value.status ?? "ready" : "failed",
-      metrics: metricsResult.status === "fulfilled" ? metricsResult.value : ""
+      ready: readyResult.status === "fulfilled" ? readyResult.value.status ?? "ready" : "failed"
     });
   }
 
@@ -221,16 +248,11 @@ export default function App() {
     if (!selectedUnitId) return;
     setReportRunning(true);
     try {
-      const response = await fetch(`${apiBase}/api/reports/monthly/run`, {
-        method: "POST",
-        headers: { ...authHeaders(token), "Content-Type": "application/json" },
-        body: JSON.stringify({ unitId: selectedUnitId })
-      });
-      if (!response.ok) {
-        setReportRunning(false);
-      }
-    } catch {
+      setAppError("");
+      await postJson("/api/reports/monthly/run", token, { unitId: selectedUnitId });
+    } catch (error) {
       setReportRunning(false);
+      showError(error, "Unable to start the monthly report.");
     }
   }
 
@@ -240,11 +262,22 @@ export default function App() {
   }
 
   async function ackAlarm(alarmId: string) {
-    await fetch(`${apiBase}/api/alarms/${alarmId}/ack`, {
-      method: "POST",
-      headers: authHeaders(token)
-    });
-    await loadAlarms();
+    try {
+      setAppError("");
+      await postJson(`/api/alarms/${alarmId}/ack`, token);
+      await loadAlarms();
+    } catch (error) {
+      showError(error, "Unable to acknowledge the alarm.");
+    }
+  }
+
+  function showError(error: unknown, fallback: string) {
+    if (error instanceof ApiError && error.status === 401) return;
+    setAppError(error instanceof ApiError
+      ? fallback
+      : error instanceof Error && error.message
+        ? error.message
+        : fallback);
   }
 
   if (!token) {
@@ -263,7 +296,7 @@ export default function App() {
         </div>
 
         <nav className="navStack" aria-label="Primary">
-          {navItems.map(item => (
+          {visibleNavItems.map(item => (
             <button
               className={activeScreen === item ? "navItem active" : "navItem"}
               key={item}
@@ -319,6 +352,13 @@ export default function App() {
           </div>
         </header>
 
+        {appError && (
+          <div className="appErrorBanner" role="alert">
+            <span>{appError}</span>
+            <button className="ghostButton" onClick={() => void loadInitial()}>Retry</button>
+          </div>
+        )}
+
         {activeScreen === "Overview" && (
           <OverviewScreen
             tags={tags}
@@ -331,6 +371,8 @@ export default function App() {
             ackAlarm={ackAlarm}
             runReport={runReport}
             reportRunning={reportRunning}
+            mayAcknowledge={mayAcknowledge}
+            mayRunReports={mayRunReports}
           />
         )}
 
@@ -361,14 +403,27 @@ export default function App() {
         )}
 
         {activeScreen === "Alarms" && (
-          <AlarmsScreen alarms={alarms} units={units} loadAlarms={loadAlarms} ackAlarm={ackAlarm} />
+          <AlarmsScreen
+            alarms={alarms}
+            units={units}
+            loadAlarms={loadAlarms}
+            ackAlarm={ackAlarm}
+            mayAcknowledge={mayAcknowledge}
+          />
         )}
 
         {activeScreen === "Reports" && (
-          <ReportsScreen reports={reports} units={units} runReport={runReport} loadReports={loadReports} reportRunning={reportRunning} />
+          <ReportsScreen
+            reports={reports}
+            units={units}
+            runReport={runReport}
+            loadReports={loadReports}
+            reportRunning={reportRunning}
+            mayRunReports={mayRunReports}
+          />
         )}
 
-        {activeScreen === "Admin" && (
+        {activeScreen === "Admin" && canViewAdmin(user?.role) && (
           <AdminScreen
             user={user}
             tenants={tenants}

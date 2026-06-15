@@ -4,7 +4,7 @@ import Kpi from "../components/Kpi";
 import ProcessStep from "../components/ProcessStep";
 import ReportPreview from "../components/ReportPreview";
 import TagMatrix from "../components/TagMatrix";
-import { processSteps, tagValue } from "../lib/format";
+import { buildOverviewKpis, buildProcessSteps, tagValue } from "../lib/format";
 
 type OverviewScreenProps = {
   tags: Tag[];
@@ -17,6 +17,8 @@ type OverviewScreenProps = {
   ackAlarm: (alarmId: string) => Promise<void>;
   runReport: () => Promise<void>;
   reportRunning: boolean;
+  mayAcknowledge: boolean;
+  mayRunReports: boolean;
 };
 
 export default function OverviewScreen({
@@ -29,15 +31,24 @@ export default function OverviewScreen({
   loadAlarms,
   ackAlarm,
   runReport,
-  reportRunning
+  reportRunning,
+  mayAcknowledge,
+  mayRunReports
 }: OverviewScreenProps) {
+  const processSteps = buildProcessSteps(tags);
+  const kpis = buildOverviewKpis(tags);
+
   return (
     <>
       <section className="kpiGrid">
-        <Kpi label="Electrical Output" value={tagValue(tags, "engine.electrical_output_kw", "kW")} tone="cyan" />
-        <Kpi label="Thermal Output" value={tagValue(tags, "heat.thermal_output_kw", "kW")} tone="lime" />
-        <Kpi label="Fuel Feed" value={tagValue(tags, "fuel.wood_chip_feed_kg_h", "kg/h")} tone="blue" />
-        <Kpi label="CO Level" value={tagValue(tags, "safety.co_ppm", "ppm")} tone="amber" />
+        {kpis.map(kpi => (
+          <Kpi
+            key={kpi.key}
+            label={kpi.label}
+            value={tagValue(tags, kpi.key, kpi.unit)}
+            tone={kpi.tone}
+          />
+        ))}
       </section>
 
       <section className="mainGrid">
@@ -61,9 +72,14 @@ export default function OverviewScreen({
           </div>
         </section>
 
-        <AlarmPreview alarms={alarms} loadAlarms={loadAlarms} ackAlarm={ackAlarm} />
+        <AlarmPreview alarms={alarms} loadAlarms={loadAlarms} ackAlarm={ackAlarm} mayAcknowledge={mayAcknowledge} />
         <TagMatrix groupedTags={groupedTags} />
-        <ReportPreview reports={reports} runReport={runReport} reportRunning={reportRunning} />
+        <ReportPreview
+          reports={reports}
+          runReport={runReport}
+          reportRunning={reportRunning}
+          mayRunReports={mayRunReports}
+        />
       </section>
     </>
   );

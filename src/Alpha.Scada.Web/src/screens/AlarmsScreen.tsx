@@ -6,9 +6,10 @@ type AlarmsScreenProps = {
   units: Unit[];
   loadAlarms: () => Promise<void>;
   ackAlarm: (alarmId: string) => Promise<void>;
+  mayAcknowledge: boolean;
 };
 
-export default function AlarmsScreen({ alarms, units, loadAlarms, ackAlarm }: AlarmsScreenProps) {
+export default function AlarmsScreen({ alarms, units, loadAlarms, ackAlarm, mayAcknowledge }: AlarmsScreenProps) {
   return (
     <section className="screenStack">
       <section className="panel">
@@ -26,7 +27,7 @@ export default function AlarmsScreen({ alarms, units, loadAlarms, ackAlarm }: Al
               <span>{alarm.message}</span>
               <small>{unitName(units, alarm.unitId)} / {new Date(alarm.raisedAtUtc).toLocaleString()}</small>
             </div>
-            <button onClick={() => ackAlarm(alarm.id)}>Acknowledge</button>
+            {mayAcknowledge && <button onClick={() => ackAlarm(alarm.id)}>Acknowledge</button>}
           </article>
         ))}
       </section>

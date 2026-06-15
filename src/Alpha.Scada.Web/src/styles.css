@@ -652,18 +652,6 @@ h3 {
   white-space: nowrap;
 }
 
-.metricsBox {
-  background: #0b0f12;
-  border: 1px solid #263541;
-  border-radius: 8px;
-  color: #b6f24a;
-  margin: 12px 0 0;
-  max-height: 180px;
-  overflow: auto;
-  padding: 12px;
-  white-space: pre-wrap;
-}
-
 .empty {
   border: 1px dashed #263541;
   border-radius: 8px;
@@ -697,6 +685,25 @@ h3 {
 .error {
   color: #ff8ea1;
   font-weight: 700;
+}
+
+.appErrorBanner {
+  align-items: center;
+  background: rgba(91, 18, 31, 0.72);
+  border: 1px solid rgba(255, 59, 92, 0.62);
+  border-radius: 6px;
+  color: #ffd5dc;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+  padding: 10px 12px;
+}
+
+.fatalError {
+  display: grid;
+  gap: 14px;
+  max-width: 560px;
+  width: 100%;
 }
 
 @media (max-width: 1180px) {

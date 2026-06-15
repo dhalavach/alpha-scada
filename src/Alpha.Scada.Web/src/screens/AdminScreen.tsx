@@ -44,7 +44,6 @@ export default function AdminScreen({ user, tenants, sites, units, system, refre
           </div>
           <Detail label="Health" value={system.health} />
           <Detail label="Ready" value={system.ready} />
-          <pre className="metricsBox">{system.metrics || "No metrics loaded"}</pre>
         </section>
       </section>
 

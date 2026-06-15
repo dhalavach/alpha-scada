@@ -4,9 +4,10 @@ type AlarmPreviewProps = {
   alarms: Alarm[];
   loadAlarms: () => Promise<void>;
   ackAlarm: (alarmId: string) => Promise<void>;
+  mayAcknowledge: boolean;
 };
 
-export default function AlarmPreview({ alarms, loadAlarms, ackAlarm }: AlarmPreviewProps) {
+export default function AlarmPreview({ alarms, loadAlarms, ackAlarm, mayAcknowledge }: AlarmPreviewProps) {
   return (
     <section className="panel alarmPanel">
       <div className="panelHeader">
@@ -20,7 +21,7 @@ export default function AlarmPreview({ alarms, loadAlarms, ackAlarm }: AlarmPrev
         <article className={`alarm ${alarm.severity}`} key={alarm.id}>
           <strong>{alarm.severity}</strong>
           <span>{alarm.message}</span>
-          <button onClick={() => ackAlarm(alarm.id)}>Acknowledge</button>
+          {mayAcknowledge && <button onClick={() => ackAlarm(alarm.id)}>Acknowledge</button>}
         </article>
       ))}
     </section>
