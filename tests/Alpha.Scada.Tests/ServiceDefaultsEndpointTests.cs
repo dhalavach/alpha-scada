@@ -49,8 +49,8 @@ public sealed class ServiceDefaultsEndpointTests(PostgresContainerFixture postgr
             await using var dataSource = NpgsqlDataSource.Create(connectionString);
             var builder = WebApplication.CreateBuilder();
             builder.WebHost.UseTestServer();
+            builder.AddAlphaObservability("alpha-test-service");
             builder.Services.AddSingleton(dataSource);
-            builder.Services.AddSingleton<IAlphaMetricsProvider>(new ProbeMetricsProvider());
 
             var app = builder.Build();
             app.MapAlphaOperationalEndpoints("alpha-test-service");
@@ -63,9 +63,8 @@ public sealed class ServiceDefaultsEndpointTests(PostgresContainerFixture postgr
 
             Assert.Equal(System.Net.HttpStatusCode.OK, health.StatusCode);
             Assert.Equal(System.Net.HttpStatusCode.OK, ready.StatusCode);
-            Assert.Contains("alpha_scada_service_up", metrics);
             Assert.Contains("alpha_scada_wolverine_error_queue_depth", metrics);
-            Assert.Contains("alpha_probe_metric", metrics);
+            Assert.Contains("http_server", metrics);
         });
     }
 
@@ -238,13 +237,4 @@ public sealed class ServiceDefaultsEndpointTests(PostgresContainerFixture postgr
         }
     }
 
-    private sealed class ProbeMetricsProvider : IAlphaMetricsProvider
-    {
-        public void AppendMetrics(System.Text.StringBuilder metrics, string serviceName)
-        {
-            metrics.AppendLine("# HELP alpha_probe_metric Probe metric");
-            metrics.AppendLine("# TYPE alpha_probe_metric gauge");
-            metrics.AppendLine("alpha_probe_metric 1");
-        }
-    }
 }

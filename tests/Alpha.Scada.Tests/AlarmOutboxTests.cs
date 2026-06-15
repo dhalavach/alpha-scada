@@ -156,10 +156,9 @@ public sealed class AlarmOutboxTests(PostgresContainerFixture postgres)
                 Assert.Equal(1, await CountDispatchedAsync(connectionString));
                 Assert.Equal(0, await CountOldDispatchedAsync(connectionString));
 
-                var rendered = new System.Text.StringBuilder();
-                host.Services.GetRequiredService<AlarmOutboxMetrics>().AppendMetrics(rendered, "alarm-test");
-                Assert.Contains("alpha_scada_alarm_outbox_pending{service=\"alarm-test\"} 1", rendered.ToString());
-                Assert.Contains("alpha_scada_alarm_outbox_poison_total{service=\"alarm-test\"} 1", rendered.ToString());
+                var metrics = host.Services.GetRequiredService<AlarmOutboxMetrics>();
+                Assert.Equal(1, metrics.PendingCount);
+                Assert.Equal(1, metrics.PoisonCount);
                 await host.StopAsync();
             }
         }

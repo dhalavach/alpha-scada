@@ -613,17 +613,25 @@ GET /metrics
 
 `/metrics` includes:
 
-- a service-specific `*_up` metric;
-- `alpha_scada_service_up`;
-- `alpha_scada_wolverine_error_queue_depth`;
-- approximate `alpha_scada_telemetry_samples_written_total` where the service database has `telemetry_samples`.
+- standard ASP.NET Core HTTP server metrics;
+- outbound `HttpClient` metrics;
+- Wolverine execution metrics;
+- cached `alpha_scada_wolverine_error_queue_depth` and `alpha_scada_wolverine_outbox_depth` gauges;
+- telemetry ingestion outcome, in-flight, duration, redelivery, and unknown-tag metrics;
+- alarm-outbox pending and poison-row gauges.
+
+OpenTelemetry also creates distributed traces for ASP.NET Core requests, outbound HTTP calls, Npgsql commands,
+Wolverine handlers, telemetry ingestion/catalog resolution, and alarm-outbox dispatch. Traces are exported through
+OTLP when `OTEL_EXPORTER_OTLP_ENDPOINT` is configured; metrics are always available to Prometheus at `/metrics`.
+Database-backed queue gauges are sampled every 30 seconds in background workers, so a Prometheus scrape never runs
+queue-count SQL.
 
 Ops files:
 
 | Path | Purpose |
 | --- | --- |
 | `ops/prometheus/prometheus.yml` | scrapes all service `/metrics` endpoints |
-| `ops/prometheus/alerts.yml` | starter alert rules for Wolverine/NATS backlog conditions |
+| `ops/prometheus/alerts.yml` | alert rules for Wolverine and alarm-outbox backlog conditions |
 | `ops/grafana/dashboards/alpha-scada.json` | starter service dashboard |
 | `ops/grafana/dashboards/messaging.json` | starter messaging dashboard |
 | `ops/scripts/backup-postgres.sh` | backup all service databases |

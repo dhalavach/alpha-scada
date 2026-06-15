@@ -5,6 +5,7 @@ using Alpha.Scada.Tenant.Infrastructure;
 const string serviceName = "alpha-scada-tenant";
 
 var builder = WebApplication.CreateBuilder(args);
+builder.AddAlphaObservability(serviceName);
 builder.Services.AddProblemDetails();
 builder.Services.AddServiceDatabase(builder.Configuration);
 builder.Services.AddAlphaMigrator<TenantMigrator>();

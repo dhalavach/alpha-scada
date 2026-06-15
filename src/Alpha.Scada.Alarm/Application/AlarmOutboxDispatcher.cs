@@ -63,6 +63,7 @@ public sealed class AlarmOutboxDispatcher(
 
         foreach (var row in rows)
         {
+            using var activity = metrics.StartDispatch(row.Id, row.EventType);
             try
             {
                 var message = AlarmOutboxEvents.Deserialize(row.EventType, row.Payload);
@@ -76,6 +77,7 @@ public sealed class AlarmOutboxDispatcher(
             }
             catch (Exception ex)
             {
+                activity?.SetStatus(System.Diagnostics.ActivityStatusCode.Error, ex.Message);
                 await MarkFailedAsync(row, ex, cancellationToken);
             }
         }

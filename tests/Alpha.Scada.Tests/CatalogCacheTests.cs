@@ -1,11 +1,11 @@
 using System.Net;
 using System.Net.Http.Json;
-using System.Text;
 using Alpha.Scada.Contracts;
 using Alpha.Scada.ServiceDefaults;
 using Alpha.Scada.Telemetry.Application;
 using Alpha.Scada.Telemetry.Application.Messaging;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Diagnostics.Metrics.Testing;
 
 namespace Alpha.Scada.Tests;
 
@@ -59,6 +59,10 @@ public sealed class CatalogCacheTests
     [Fact]
     public async Task Unknown_tag_samples_are_dropped_and_metered()
     {
+        using var dropped = new MetricCollector<long>(
+            null,
+            AlphaObservability.TelemetryMeterName,
+            "alpha.scada.telemetry.ingestion.unknown_tags_dropped");
         using var cache = new MemoryCache(new MemoryCacheOptions());
         var metrics = new TelemetryIngestionMetrics();
         var catalog = new CatalogCache(
@@ -88,9 +92,7 @@ public sealed class CatalogCacheTests
 
         Assert.NotNull(resolved);
         Assert.Single(resolved.Samples);
-        var rendered = new StringBuilder();
-        metrics.AppendMetrics(rendered, "telemetry-test");
-        Assert.Contains("alpha_scada_telemetry_ingestion_unknown_tags_dropped_total{service=\"telemetry-test\"} 1", rendered.ToString());
+        Assert.Equal(1, Assert.Single(dropped.GetMeasurementSnapshot()).Value);
     }
 
     private static CanonicalTelemetry Telemetry(string tenantKey, params CanonicalReading[] readings) =>

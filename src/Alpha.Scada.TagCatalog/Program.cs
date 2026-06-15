@@ -6,6 +6,7 @@ using Alpha.Scada.TagCatalog.Infrastructure;
 const string serviceName = "alpha-scada-tag-catalog";
 
 var builder = WebApplication.CreateBuilder(args);
+builder.AddAlphaObservability(serviceName);
 builder.Services.AddProblemDetails();
 builder.Services.AddServiceDatabase(builder.Configuration);
 builder.Services.AddAlphaMigrator<TagCatalogMigrator>();

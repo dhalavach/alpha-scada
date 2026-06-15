@@ -149,7 +149,8 @@ Eight logical databases on one PostgreSQL/TimescaleDB instance (locally). Schema
 | `tag_current` | plain upsert table, PK `tag_id` | Latest value per tag (fast "current" reads) |
 | `telemetry_minute` | **continuous aggregate** (real-time, `materialized_only=false`) | Per-minute averages backing monthly reports |
 
-Ingestion writes are **set-based** (`insert … select from unnest(...)`), not row-by-row. The `/metrics` sample count uses `approximate_row_count()` (not `count(*)`).
+Ingestion writes are **set-based** (`insert … select from unnest(...)`), not row-by-row. Database-backed
+queue-depth metrics are sampled by background workers instead of running SQL during Prometheus scrapes.
 
 ### 7.3 Alarm store (transactional outbox)
 | Object | Shape | Purpose |
@@ -189,9 +190,9 @@ Ingestion writes are **set-based** (`insert … select from unnest(...)`), not r
 ## 10. Observability & operations
 
 - Every service exposes `/health` (liveness), `/ready` (DB connectivity), and `/metrics` (Prometheus text) via `MapAlphaOperationalEndpoints`.
-- Metrics include service-up, Wolverine outbox/dead-letter depth, and approximate telemetry-sample count.
-- **Prometheus + Grafana** ship under the Compose `ops` profile (dashboards under `ops/grafana`). Alerts (`ops/prometheus/alerts.yml`) cover outbox backlog and dead-letter depth; some MQTT-broker alerts are inert pending an exporter.
-- **No distributed tracing yet** — correlation ids exist (`ServiceIdentity`) but are not promoted to OpenTelemetry spans (recommended next step for cross-service debugging).
+- OpenTelemetry metrics include ASP.NET Core, outbound HTTP, Wolverine, telemetry-ingestion, and alarm-outbox instruments.
+- **Prometheus + Grafana** ship under the Compose `ops` profile (dashboards under `ops/grafana`). Alerts (`ops/prometheus/alerts.yml`) cover Wolverine and alarm-outbox backlog/dead-letter conditions.
+- OpenTelemetry traces cover ASP.NET Core, outbound HTTP, Npgsql, Wolverine handlers, telemetry ingestion/catalog resolution, and alarm-outbox dispatch. Set `OTEL_EXPORTER_OTLP_ENDPOINT` to export them.
 - **Resilience** — outbound HTTP uses `Microsoft.Extensions.Http.Resilience` (`AddAlphaResilience`: 2s attempt timeout, 10s total, 2 retries, exponential backoff).
 
 ---

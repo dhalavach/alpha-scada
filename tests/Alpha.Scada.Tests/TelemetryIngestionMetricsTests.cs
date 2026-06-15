@@ -1,26 +1,34 @@
-using System.Text;
 using Alpha.Scada.Telemetry.Application;
+using Microsoft.Extensions.Diagnostics.Metrics.Testing;
 
 namespace Alpha.Scada.Tests;
 
 public sealed class TelemetryIngestionMetricsTests
 {
     [Fact]
-    public void Metrics_render_in_flight_outcomes_and_duration_histogram()
+    public void Metrics_record_outcomes_duration_and_unknown_tags()
     {
+        using var messages = new MetricCollector<long>(
+            null,
+            "Alpha.Scada.Telemetry",
+            "alpha.scada.telemetry.ingestion.messages");
+        using var duration = new MetricCollector<double>(
+            null,
+            "Alpha.Scada.Telemetry",
+            "alpha.scada.telemetry.ingestion.processing");
+        using var unknownTags = new MetricCollector<long>(
+            null,
+            "Alpha.Scada.Telemetry",
+            "alpha.scada.telemetry.ingestion.unknown_tags_dropped");
         var metrics = new TelemetryIngestionMetrics();
         var measurement = metrics.Begin();
         measurement.Complete(TelemetryIngestionOutcome.Success);
         metrics.RecordUnknownTagsDropped(2);
 
-        var text = new StringBuilder();
-        metrics.AppendMetrics(text, "alpha-scada-telemetry");
-        var rendered = text.ToString();
-
-        Assert.Contains("alpha_scada_telemetry_ingestion_in_flight", rendered);
-        Assert.Contains("outcome=\"success\"} 1", rendered);
-        Assert.Contains("alpha_scada_telemetry_ingestion_processing_seconds_count", rendered);
-        Assert.Contains("alpha_scada_telemetry_ingestion_processing_seconds_sum", rendered);
-        Assert.Contains("alpha_scada_telemetry_ingestion_unknown_tags_dropped_total{service=\"alpha-scada-telemetry\"} 2", rendered);
+        var outcome = Assert.Single(messages.GetMeasurementSnapshot());
+        Assert.Equal(1, outcome.Value);
+        Assert.Contains(outcome.Tags, tag => tag.Key == "outcome" && Equals(tag.Value, "success"));
+        Assert.Single(duration.GetMeasurementSnapshot());
+        Assert.Equal(2, Assert.Single(unknownTags.GetMeasurementSnapshot()).Value);
     }
 }

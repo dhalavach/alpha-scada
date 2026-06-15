@@ -19,22 +19,20 @@ groups:
           summary: "Wolverine error queue is not empty"
           description: "Service {{ $labels.service }} has {{ $value }} dead-lettered messages."
 
-      # These NATS broker-side metrics require a NATS exporter or log-derived
-      # metric source. The rules are inert until that exporter is added.
-      - alert: AlphaScadaNatsErrorBacklog
-        expr: alpha_scada_nats_error_backlog > 0
-        for: 5m
-        labels:
-          severity: critical
-        annotations:
-          summary: "NATS error backlog is not empty"
-          description: "Service {{ $labels.service }} has {{ $value }} messages requiring broker-side triage."
-
-      - alert: AlphaScadaNatsConsumerLag
-        expr: alpha_scada_nats_consumer_lag_seconds > 60
+      - alert: AlphaScadaAlarmOutboxBacklog
+        expr: alpha_scada_alarm_outbox_pending > 100
         for: 1m
         labels:
           severity: warning
         annotations:
-          summary: "NATS consumer lag is high"
-          description: "Service {{ $labels.service }} has NATS consumer lag of {{ $value }} seconds."
+          summary: "Alarm outbox backlog is growing"
+          description: "Alarm has {{ $value }} events awaiting delivery."
+
+      - alert: AlphaScadaAlarmOutboxPoisonRows
+        expr: alpha_scada_alarm_outbox_poison > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Alarm outbox contains poison rows"
+          description: "Alarm has {{ $value }} events that exhausted delivery attempts."

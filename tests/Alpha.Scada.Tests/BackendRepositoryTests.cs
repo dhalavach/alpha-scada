@@ -185,26 +185,6 @@ public sealed class BackendRepositoryTests(PostgresContainerFixture postgres)
         });
     }
 
-    [Fact]
-    public async Task Metrics_endpoint_reports_wolverine_depth()
-    {
-        await WithPostgresAsync(async connectionString =>
-        {
-            await using var dataSource = NpgsqlDataSource.Create(connectionString);
-            var result = await MinimalApi.MetricsAsync("alpha-test-service", dataSource, CancellationToken.None);
-            var context = new DefaultHttpContext();
-            using var provider = new ServiceCollection().AddLogging().BuildServiceProvider();
-            context.RequestServices = provider;
-            context.Response.Body = new MemoryStream();
-            await result.ExecuteAsync(context);
-            context.Response.Body.Position = 0;
-            var text = await new StreamReader(context.Response.Body).ReadToEndAsync();
-
-            Assert.Contains("alpha_scada_service_up", text);
-            Assert.Contains("alpha_scada_wolverine_error_queue_depth", text);
-        });
-    }
-
     private static CurrentUserDto User(Guid tenantId, string role) =>
         new(Guid.NewGuid(), tenantId, "user@example.test", "User", role);
 

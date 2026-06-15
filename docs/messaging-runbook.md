@@ -22,7 +22,7 @@ docker compose --profile ops up -d prometheus grafana
 open http://localhost:3000
 ```
 
-Each service exports app-side Wolverine metrics at `/metrics`, including outbox depth, error queue depth, and telemetry sample count where applicable. NATS monitoring is available on `http://localhost:8222`.
+Each service exports OpenTelemetry metrics at `/metrics`, including Wolverine outbox/error-queue depth. Telemetry adds ingestion outcome and latency metrics; Alarm adds pending and poison alarm-outbox gauges. NATS broker monitoring remains available separately on `http://localhost:8222`.
 
 ## JetStream Streams
 

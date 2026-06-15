@@ -57,13 +57,17 @@
       }
     },
     {
-      "title": "NATS Error Backlog",
+      "title": "Alarm Outbox State",
       "type": "timeseries",
       "datasource": "Prometheus",
       "targets": [
         {
-          "expr": "alpha_scada_nats_error_backlog",
-          "legendFormat": "{{ service }}"
+          "expr": "alpha_scada_alarm_outbox_pending",
+          "legendFormat": "pending"
+        },
+        {
+          "expr": "alpha_scada_alarm_outbox_poison",
+          "legendFormat": "poison"
         }
       ],
       "gridPos": {
@@ -74,13 +78,13 @@
       }
     },
     {
-      "title": "NATS Consumer Lag",
+      "title": "Telemetry Ingestion Rate",
       "type": "timeseries",
       "datasource": "Prometheus",
       "targets": [
         {
-          "expr": "alpha_scada_nats_consumer_lag_seconds",
-          "legendFormat": "{{ service }}"
+          "expr": "sum by (outcome) (rate(alpha_scada_telemetry_ingestion_messages_total[5m]))",
+          "legendFormat": "{{ outcome }}"
         }
       ],
       "gridPos": {
@@ -91,13 +95,13 @@
       }
     },
     {
-      "title": "Telemetry Samples Written",
+      "title": "Telemetry Ingestion p95",
       "type": "timeseries",
       "datasource": "Prometheus",
       "targets": [
         {
-          "expr": "rate(alpha_scada_telemetry_samples_written_total[5m])",
-          "legendFormat": "{{ service }}"
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(alpha_scada_telemetry_ingestion_processing_seconds_bucket[5m])))",
+          "legendFormat": "p95"
         }
       ],
       "gridPos": {

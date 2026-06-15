@@ -1,13 +1,31 @@
-using System.Globalization;
-using System.Text;
+using System.Diagnostics;
+using System.Diagnostics.Metrics;
 using Alpha.Scada.ServiceDefaults;
 
 namespace Alpha.Scada.Alarm.Application;
 
-public sealed class AlarmOutboxMetrics : IAlphaMetricsProvider
+public sealed class AlarmOutboxMetrics
 {
+    private const string ServiceName = "alpha-scada-alarm";
+    private static readonly Meter Meter = new(AlphaObservability.AlarmMeterName);
+    private static readonly ActivitySource Activities = new(AlphaObservability.AlarmMeterName);
+    private static readonly KeyValuePair<string, object?> ServiceTag = new("service", ServiceName);
+    private readonly ObservableGauge<long> pendingGauge;
+    private readonly ObservableGauge<long> poisonGauge;
     private long pending;
     private long poison;
+
+    public AlarmOutboxMetrics()
+    {
+        pendingGauge = Meter.CreateObservableGauge(
+            "alpha.scada.alarm.outbox.pending",
+            () => new Measurement<long>(Volatile.Read(ref pending), ServiceTag),
+            description: "Alarm outbox rows awaiting successful delivery");
+        poisonGauge = Meter.CreateObservableGauge(
+            "alpha.scada.alarm.outbox.poison",
+            () => new Measurement<long>(Volatile.Read(ref poison), ServiceTag),
+            description: "Alarm outbox rows that exhausted delivery attempts");
+    }
 
     public void Update(long pendingCount, long poisonCount)
     {
@@ -15,18 +33,16 @@ public sealed class AlarmOutboxMetrics : IAlphaMetricsProvider
         Interlocked.Exchange(ref poison, poisonCount);
     }
 
-    public void AppendMetrics(StringBuilder metrics, string serviceName)
+    public long PendingCount => Volatile.Read(ref pending);
+
+    public long PoisonCount => Volatile.Read(ref poison);
+
+    public Activity? StartDispatch(Guid outboxId, string eventType)
     {
-        var serviceLabel = PrometheusLabels.Escape(serviceName);
-        metrics.AppendLine("# HELP alpha_scada_alarm_outbox_pending Alarm outbox rows awaiting successful delivery");
-        metrics.AppendLine("# TYPE alpha_scada_alarm_outbox_pending gauge");
-        metrics.AppendLine(
-            CultureInfo.InvariantCulture,
-            $"alpha_scada_alarm_outbox_pending{{service=\"{serviceLabel}\"}} {Interlocked.Read(ref pending)}");
-        metrics.AppendLine("# HELP alpha_scada_alarm_outbox_poison_total Alarm outbox rows that exhausted delivery attempts");
-        metrics.AppendLine("# TYPE alpha_scada_alarm_outbox_poison_total gauge");
-        metrics.AppendLine(
-            CultureInfo.InvariantCulture,
-            $"alpha_scada_alarm_outbox_poison_total{{service=\"{serviceLabel}\"}} {Interlocked.Read(ref poison)}");
+        var activity = Activities.StartActivity("alarm.outbox.dispatch", ActivityKind.Producer);
+        activity?.SetTag("messaging.system", "nats");
+        activity?.SetTag("messaging.message.id", outboxId);
+        activity?.SetTag("messaging.message.type", eventType);
+        return activity;
     }
 }

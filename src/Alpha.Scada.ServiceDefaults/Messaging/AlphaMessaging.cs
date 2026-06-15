@@ -40,6 +40,7 @@ public static class AlphaMessaging
         var storageSchema = configuration.GetValue("Wolverine:StorageSchema", "wolverine");
 
         options.ServiceName = serviceName;
+        options.Metrics.Mode = WolverineMetricsMode.SystemDiagnosticsMeter;
         var entryAssembly = Assembly.GetEntryAssembly();
         if (entryAssembly is not null)
         {

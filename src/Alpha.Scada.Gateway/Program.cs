@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 const string serviceName = "alpha-scada-gateway";
 
 var builder = WebApplication.CreateBuilder(args);
+builder.AddAlphaObservability(serviceName);
 builder.Services.AddProblemDetails();
 builder.Services.AddGatewayLoginRateLimiting();
 builder.Services.AddServiceDatabase(builder.Configuration);

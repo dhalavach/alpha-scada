@@ -326,7 +326,6 @@ public sealed class TelemetryPrimaryIngestionTests(PostgresContainerFixture post
                 services.AddSingleton<CanonicalTelemetryHandler>();
                 services.AddSingleton(sp => TelemetryIngestionOptions.FromConfiguration(sp.GetRequiredService<IConfiguration>()));
                 services.AddSingleton<TelemetryIngestionMetrics>();
-                services.AddSingleton<IAlphaMetricsProvider>(sp => sp.GetRequiredService<TelemetryIngestionMetrics>());
                 services.AddHostedService<TelemetryAdapterIngestionWorker>();
                 services.AddMemoryCache();
                 services.AddAlphaServiceClients(

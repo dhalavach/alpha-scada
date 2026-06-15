@@ -1,7 +1,7 @@
 using System.Diagnostics;
-using System.Globalization;
-using System.Text;
+using System.Diagnostics.Metrics;
 using Alpha.Scada.ServiceDefaults;
+using Alpha.Scada.Telemetry.Application.Messaging;
 
 namespace Alpha.Scada.Telemetry.Application;
 
@@ -15,137 +15,92 @@ public enum TelemetryIngestionOutcome
     EscapedError
 }
 
-public sealed class TelemetryIngestionMetrics : IAlphaMetricsProvider
+public sealed class TelemetryIngestionMetrics
 {
-    private static readonly double[] DurationBucketsSeconds = [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10];
-    private readonly long[] durationBuckets = new long[DurationBucketsSeconds.Length];
-    private long inFlight;
-    private long success;
-    private long dropped;
-    private long deadLetter;
-    private long retry;
-    private long terminalError;
-    private long escapedError;
-    private long maxDeliveriesExhausted;
-    private long unknownTagsDropped;
-    private long durationCount;
-    private long durationTicksTotal;
+    private const string ServiceName = "alpha-scada-telemetry";
+    private static readonly Meter Meter = new(AlphaObservability.TelemetryMeterName);
+    private static readonly ActivitySource Activities = new(AlphaObservability.TelemetryMeterName);
+    private static readonly Counter<long> Messages = Meter.CreateCounter<long>(
+        "alpha.scada.telemetry.ingestion.messages",
+        description: "Telemetry ingestion messages by terminal outcome");
+    private static readonly UpDownCounter<long> InFlight = Meter.CreateUpDownCounter<long>(
+        "alpha.scada.telemetry.ingestion.in_flight",
+        description: "Telemetry messages currently being processed");
+    private static readonly Histogram<double> ProcessingDuration = Meter.CreateHistogram<double>(
+        "alpha.scada.telemetry.ingestion.processing",
+        unit: "s",
+        description: "Telemetry ingestion processing duration");
+    private static readonly Counter<long> MaxDeliveriesExhausted = Meter.CreateCounter<long>(
+        "alpha.scada.telemetry.ingestion.max_deliveries_exhausted",
+        description: "Telemetry messages that exhausted JetStream redelivery attempts");
+    private static readonly Counter<long> UnknownTagsDropped = Meter.CreateCounter<long>(
+        "alpha.scada.telemetry.ingestion.unknown_tags_dropped",
+        description: "Telemetry samples dropped because their tags were not configured");
+    private static readonly KeyValuePair<string, object?> ServiceTag = new("service", ServiceName);
 
     public TelemetryIngestionMeasurement Begin()
     {
-        Interlocked.Increment(ref inFlight);
-        return new TelemetryIngestionMeasurement(this, Stopwatch.GetTimestamp());
-    }
-
-    public void AppendMetrics(StringBuilder metrics, string serviceName)
-    {
-        var serviceLabel = PrometheusLabels.Escape(serviceName);
-        metrics.AppendLine("# HELP alpha_scada_telemetry_ingestion_in_flight Telemetry messages currently being processed");
-        metrics.AppendLine("# TYPE alpha_scada_telemetry_ingestion_in_flight gauge");
-        metrics.AppendLine(CultureInfo.InvariantCulture, $"alpha_scada_telemetry_ingestion_in_flight{{service=\"{serviceLabel}\"}} {Interlocked.Read(ref inFlight)}");
-        metrics.AppendLine("# HELP alpha_scada_telemetry_ingestion_messages_total Telemetry ingestion messages by terminal outcome");
-        metrics.AppendLine("# TYPE alpha_scada_telemetry_ingestion_messages_total counter");
-        AppendOutcome(metrics, serviceLabel, "success", ref success);
-        AppendOutcome(metrics, serviceLabel, "dropped", ref dropped);
-        AppendOutcome(metrics, serviceLabel, "dead_letter", ref deadLetter);
-        AppendOutcome(metrics, serviceLabel, "retry", ref retry);
-        AppendOutcome(metrics, serviceLabel, "terminal_error", ref terminalError);
-        AppendOutcome(metrics, serviceLabel, "escaped_error", ref escapedError);
-        metrics.AppendLine("# HELP alpha_scada_telemetry_ingestion_max_deliveries_exhausted_total Telemetry messages that exhausted JetStream redelivery attempts");
-        metrics.AppendLine("# TYPE alpha_scada_telemetry_ingestion_max_deliveries_exhausted_total counter");
-        metrics.AppendLine(
-            CultureInfo.InvariantCulture,
-            $"alpha_scada_telemetry_ingestion_max_deliveries_exhausted_total{{service=\"{serviceLabel}\"}} {Interlocked.Read(ref maxDeliveriesExhausted)}");
-        metrics.AppendLine("# HELP alpha_scada_telemetry_ingestion_unknown_tags_dropped_total Telemetry samples dropped because their tags were not configured");
-        metrics.AppendLine("# TYPE alpha_scada_telemetry_ingestion_unknown_tags_dropped_total counter");
-        metrics.AppendLine(
-            CultureInfo.InvariantCulture,
-            $"alpha_scada_telemetry_ingestion_unknown_tags_dropped_total{{service=\"{serviceLabel}\"}} {Interlocked.Read(ref unknownTagsDropped)}");
-        metrics.AppendLine("# HELP alpha_scada_telemetry_ingestion_processing_seconds Telemetry ingestion processing duration");
-        metrics.AppendLine("# TYPE alpha_scada_telemetry_ingestion_processing_seconds histogram");
-
-        long cumulative = 0;
-        for (var i = 0; i < DurationBucketsSeconds.Length; i++)
-        {
-            cumulative += Interlocked.Read(ref durationBuckets[i]);
-            metrics.AppendLine(
-                CultureInfo.InvariantCulture,
-                $"alpha_scada_telemetry_ingestion_processing_seconds_bucket{{service=\"{serviceLabel}\",le=\"{DurationBucketsSeconds[i]}\"}} {cumulative}");
-        }
-
-        var count = Interlocked.Read(ref durationCount);
-        metrics.AppendLine(CultureInfo.InvariantCulture, $"alpha_scada_telemetry_ingestion_processing_seconds_bucket{{service=\"{serviceLabel}\",le=\"+Inf\"}} {count}");
-        metrics.AppendLine(CultureInfo.InvariantCulture, $"alpha_scada_telemetry_ingestion_processing_seconds_count{{service=\"{serviceLabel}\"}} {count}");
-        metrics.AppendLine(
-            CultureInfo.InvariantCulture,
-            $"alpha_scada_telemetry_ingestion_processing_seconds_sum{{service=\"{serviceLabel}\"}} {Interlocked.Read(ref durationTicksTotal) / (double)Stopwatch.Frequency}");
+        InFlight.Add(1, ServiceTag);
+        return new TelemetryIngestionMeasurement(Stopwatch.GetTimestamp());
     }
 
     public void RecordMaxDeliveriesExhausted() =>
-        Interlocked.Increment(ref maxDeliveriesExhausted);
+        MaxDeliveriesExhausted.Add(1, ServiceTag);
 
     public void RecordUnknownTagsDropped(int count)
     {
         if (count > 0)
         {
-            Interlocked.Add(ref unknownTagsDropped, count);
+            UnknownTagsDropped.Add(count, ServiceTag);
         }
     }
 
-    private void Complete(long startedTimestamp, TelemetryIngestionOutcome outcome)
+    public Activity? StartIngestion(string subject, string messageId)
     {
-        Interlocked.Decrement(ref inFlight);
-        IncrementOutcome(outcome);
-
-        var elapsedTicks = Stopwatch.GetTimestamp() - startedTimestamp;
-        Interlocked.Increment(ref durationCount);
-        Interlocked.Add(ref durationTicksTotal, elapsedTicks);
-        var elapsedSeconds = elapsedTicks / (double)Stopwatch.Frequency;
-        for (var i = 0; i < DurationBucketsSeconds.Length; i++)
-        {
-            if (elapsedSeconds <= DurationBucketsSeconds[i])
-            {
-                Interlocked.Increment(ref durationBuckets[i]);
-                return;
-            }
-        }
+        var activity = Activities.StartActivity("telemetry.ingest", ActivityKind.Consumer);
+        activity?.SetTag("messaging.system", "nats");
+        activity?.SetTag("messaging.destination.name", subject);
+        activity?.SetTag("messaging.message.id", messageId);
+        return activity;
     }
 
-    private void IncrementOutcome(TelemetryIngestionOutcome outcome)
+    public Activity? StartCatalogResolution(CanonicalTelemetry telemetry)
     {
-        switch (outcome)
-        {
-            case TelemetryIngestionOutcome.Success:
-                Interlocked.Increment(ref success);
-                break;
-            case TelemetryIngestionOutcome.Dropped:
-                Interlocked.Increment(ref dropped);
-                break;
-            case TelemetryIngestionOutcome.DeadLetter:
-                Interlocked.Increment(ref deadLetter);
-                break;
-            case TelemetryIngestionOutcome.Retry:
-                Interlocked.Increment(ref retry);
-                break;
-            case TelemetryIngestionOutcome.TerminalError:
-                Interlocked.Increment(ref terminalError);
-                break;
-            case TelemetryIngestionOutcome.EscapedError:
-                Interlocked.Increment(ref escapedError);
-                break;
-            default:
-                throw new ArgumentOutOfRangeException(nameof(outcome), outcome, "Unsupported telemetry ingestion outcome.");
-        }
+        var activity = Activities.StartActivity("telemetry.catalog.resolve", ActivityKind.Client);
+        activity?.SetTag("alpha.tenant.key", telemetry.TenantKey);
+        activity?.SetTag("alpha.site.key", telemetry.SiteKey);
+        activity?.SetTag("alpha.unit.key", telemetry.UnitKey);
+        activity?.SetTag("alpha.telemetry.sample.count", telemetry.Readings.Count);
+        return activity;
     }
 
-    private static void AppendOutcome(StringBuilder metrics, string serviceLabel, string outcome, ref long value) =>
-        metrics.AppendLine(
-            CultureInfo.InvariantCulture,
-            $"alpha_scada_telemetry_ingestion_messages_total{{service=\"{serviceLabel}\",outcome=\"{outcome}\"}} {Interlocked.Read(ref value)}");
+    private static void Complete(long startedTimestamp, TelemetryIngestionOutcome outcome)
+    {
+        InFlight.Add(-1, ServiceTag);
+        Messages.Add(
+            1,
+            ServiceTag,
+            new KeyValuePair<string, object?>("outcome", OutcomeName(outcome)));
+        ProcessingDuration.Record(
+            Stopwatch.GetElapsedTime(startedTimestamp).TotalSeconds,
+            ServiceTag);
+    }
 
-    public readonly struct TelemetryIngestionMeasurement(TelemetryIngestionMetrics owner, long startedTimestamp)
+    private static string OutcomeName(TelemetryIngestionOutcome outcome) =>
+        outcome switch
+        {
+            TelemetryIngestionOutcome.Success => "success",
+            TelemetryIngestionOutcome.Dropped => "dropped",
+            TelemetryIngestionOutcome.DeadLetter => "dead_letter",
+            TelemetryIngestionOutcome.Retry => "retry",
+            TelemetryIngestionOutcome.TerminalError => "terminal_error",
+            TelemetryIngestionOutcome.EscapedError => "escaped_error",
+            _ => throw new ArgumentOutOfRangeException(nameof(outcome), outcome, "Unsupported telemetry ingestion outcome.")
+        };
+
+    public readonly struct TelemetryIngestionMeasurement(long startedTimestamp)
     {
         public void Complete(TelemetryIngestionOutcome outcome) =>
-            owner.Complete(startedTimestamp, outcome);
+            TelemetryIngestionMetrics.Complete(startedTimestamp, outcome);
     }
 }

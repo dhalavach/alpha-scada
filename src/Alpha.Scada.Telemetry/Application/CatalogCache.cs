@@ -17,6 +17,7 @@ public sealed class CatalogCache(
 
     public async Task<ResolvedTelemetryBatch?> ResolveAsync(CanonicalTelemetry telemetry, CancellationToken cancellationToken)
     {
+        using var activity = metrics.StartCatalogResolution(telemetry);
         var tenant = await ResolveTenantAsync(telemetry.TenantKey, cancellationToken);
         var unit = await ResolveUnitAsync(tenant.Id, telemetry.SiteKey, telemetry.UnitKey, cancellationToken);
         var tagKeys = telemetry.Readings.Select(sample => sample.TagKey).Distinct().ToArray();

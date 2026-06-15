@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using Alpha.Scada.ServiceDefaults.Messaging;
 using Alpha.Scada.Telemetry.Application.Messaging;
@@ -99,6 +100,7 @@ public sealed class TelemetryAdapterIngestionWorker(
     {
         var headers = ReadHeaders(message);
         var messageId = ResolveMessageId(message.Subject, message.Data, headers);
+        using var activity = metrics.StartIngestion(message.Subject, messageId);
         try
         {
             message.EnsureSuccess();
@@ -114,18 +116,26 @@ public sealed class TelemetryAdapterIngestionWorker(
                     }.WithHeader(RawTelemetryHeaders.NatsMessageId, messageId));
             }
 
-            return await AckAsync(message, stored is null ? TelemetryIngestionOutcome.Dropped : TelemetryIngestionOutcome.Success, cancellationToken);
+            var outcome = await AckAsync(
+                message,
+                stored is null ? TelemetryIngestionOutcome.Dropped : TelemetryIngestionOutcome.Success,
+                cancellationToken);
+            activity?.SetTag("alpha.telemetry.ingestion.outcome", outcome.ToString());
+            return outcome;
         }
         catch (JsonException ex)
         {
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
             return await DeadLetterAsync(jetStream, message, messageId, ex, cancellationToken);
         }
         catch (InvalidTelemetryEnvelopeException ex)
         {
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
             return await DeadLetterAsync(jetStream, message, messageId, ex, cancellationToken);
         }
         catch (TelemetryResolutionException ex)
         {
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
             return await DeadLetterAsync(jetStream, message, messageId, ex, cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -134,6 +144,7 @@ public sealed class TelemetryAdapterIngestionWorker(
         }
         catch (Exception ex)
         {
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
             logger.LogWarning(ex, "Telemetry adapter failed to process {Subject}. Requesting redelivery.", message.Subject);
             return await NakAsync(message, cancellationToken);
         }

@@ -6,6 +6,7 @@ using Alpha.Scada.ServiceDefaults;
 const string serviceName = "alpha-scada-identity";
 
 var builder = WebApplication.CreateBuilder(args);
+builder.AddAlphaObservability(serviceName);
 builder.Services.AddProblemDetails();
 builder.Services.AddServiceDatabase(builder.Configuration);
 builder.Services.AddAlphaMigrator<IdentityMigrator>();

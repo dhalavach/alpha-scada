@@ -1,20 +1,58 @@
 {
   "title": "Alpha SCADA Overview",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
+  "refresh": "10s",
+  "tags": ["alpha-scada", "operations"],
   "panels": [
     {
-      "title": "Gateway Up",
+      "title": "Service Availability",
       "type": "stat",
+      "datasource": "Prometheus",
       "targets": [
         {
-          "expr": "alpha_scada_gateway_up"
+          "expr": "up{job=\"alpha-scada-services\"}",
+          "legendFormat": "{{ instance }}"
         }
       ],
       "gridPos": {
         "h": 8,
         "w": 8,
         "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "title": "HTTP Request Rate",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum by (instance) (rate(http_server_request_duration_seconds_count[5m]))",
+          "legendFormat": "{{ instance }}"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 0
+      }
+    },
+    {
+      "title": "HTTP Request p95",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (instance, le) (rate(http_server_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{ instance }}"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
         "y": 0
       }
     }
