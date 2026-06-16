@@ -113,6 +113,25 @@ public sealed class ServiceDefaultsEndpointTests(PostgresContainerFixture postgr
     }
 
     [Fact]
+    public async Task Migration_bootstrap_serializes_concurrent_migrators_on_a_fresh_database()
+    {
+        await WithPostgresAsync(async connectionString =>
+        {
+            await using var dataSource = NpgsqlDataSource.Create(connectionString);
+            var first = new ProbeMigrator(dataSource);
+            var second = new SecondaryProbeMigrator(dataSource);
+
+            await Task.WhenAll(
+                first.MigrateAsync(CancellationToken.None),
+                second.MigrateAsync(CancellationToken.None));
+
+            Assert.Equal(2, await CountAsync(dataSource, "select count(*) from alpha_schema_migrations"));
+            Assert.Equal(1, await CountAsync(dataSource, "select count(*) from migration_probe"));
+            Assert.Equal(1, await CountAsync(dataSource, "select count(*) from secondary_migration_probe"));
+        });
+    }
+
+    [Fact]
     public void Service_client_registration_uses_configured_endpoint_options()
     {
         var configuration = TestJwt.Configuration(("Services:Asset", "http://asset:8080"));
@@ -235,6 +254,23 @@ public sealed class ServiceDefaultsEndpointTests(PostgresContainerFixture postgr
                 """, connection);
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
+    }
+
+    private sealed class SecondaryProbeMigrator(NpgsqlDataSource dataSource) :
+        SqlDatabaseMigrator(dataSource, NullLogger<SecondaryProbeMigrator>.Instance)
+    {
+        protected override IReadOnlyList<SqlMigration> Migrations { get; } =
+        [
+            new("001_probe", """
+                create table if not exists secondary_migration_probe (
+                    id integer primary key
+                );
+
+                insert into secondary_migration_probe (id)
+                values (1)
+                on conflict (id) do nothing;
+                """)
+        ];
     }
 
 }

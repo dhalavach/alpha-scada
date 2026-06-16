@@ -14,6 +14,9 @@ builder.Services.AddSingleton<IdentityRepository>();
 builder.Services.AddAlphaJwtAuthentication(builder.Configuration);
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<AuthService>();
+builder.Services.AddSingleton(
+    AuditRetentionOptions.FromConfiguration(builder.Configuration));
+builder.Services.AddHostedService<AuditRetentionWorker>();
 
 var app = builder.Build();
 await app.ApplyAlphaMigrationsAsync();

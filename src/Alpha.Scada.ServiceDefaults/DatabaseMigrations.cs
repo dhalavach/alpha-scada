@@ -27,6 +27,11 @@ public abstract class SqlDatabaseMigrator(
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
+        await ExecuteAsync(
+            connection,
+            transaction,
+            "select pg_advisory_xact_lock(hashtext('alpha_schema_migrations'));",
+            cancellationToken);
         await ExecuteAsync(connection, transaction, """
             create table if not exists alpha_schema_migrations (
                 migrator text not null,
@@ -35,7 +40,12 @@ public abstract class SqlDatabaseMigrator(
                 primary key (migrator, migration_id)
             );
             """, cancellationToken);
-        await ExecuteAsync(connection, transaction, "select pg_advisory_xact_lock(hashtext(@lock_key));", cancellationToken, ("lock_key", Name));
+        await ExecuteAsync(
+            connection,
+            transaction,
+            "select pg_advisory_xact_lock(hashtext(@lock_key));",
+            cancellationToken,
+            ("lock_key", Name));
 
         foreach (var migration in Migrations)
         {

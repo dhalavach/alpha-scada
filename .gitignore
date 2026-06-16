@@ -11,3 +11,7 @@ dist/
 *.log
 .env
 TestResults/
+.claude/
+artifacts/
+coverage/
+*.trx

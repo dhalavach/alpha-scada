@@ -1,7 +1,7 @@
-# Alpha SCADA — Architecture (by Claude)
+# Alpha SCADA Architecture Review
 
-> _Authored by Claude (Opus 4.8) on 2026-06-05 from a full read of the codebase at commit `fc21040`._
-> _This is a companion/refresh of [`system-overview.md`](system-overview.md). Where the two disagree, treat this file as the later snapshot but verify against source. Diagrams live in [`architecture-diagram-by-Claude.md`](architecture-diagram-by-Claude.md)._
+> _Review snapshot created on 2026-06-05 from repository commit `fc21040`._
+> _The current canonical architecture is [`system-overview.md`](system-overview.md). Diagrams for this snapshot live in [`architecture-diagram-notes.md`](architecture-diagram-notes.md)._
 
 ---
 

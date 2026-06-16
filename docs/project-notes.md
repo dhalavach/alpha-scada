@@ -1,7 +1,7 @@
-# Alpha SCADA Platform — README (by Claude)
+# Alpha SCADA Platform Notes
 
-> _Authored by Claude (Opus 4.8) on 2026-06-05 from a full review of the repository at commit `fc21040`._
-> _This is a Claude-authored companion to the canonical [`README.md`](README.md). For the deep design, see [`docs/ARCHITECTURE-by-Claude.md`](docs/ARCHITECTURE-by-Claude.md); for diagrams, see the simplified [`docs/architecture-diagram-by-Claude-simple.md`](docs/architecture-diagram-by-Claude-simple.md) and detailed [`docs/architecture-diagram-by-Claude.md`](docs/architecture-diagram-by-Claude.md) versions._
+> _Review snapshot created on 2026-06-05 from repository commit `fc21040`._
+> _The canonical entry point is [`README.md`](../README.md). For the deep design, see [`architecture-review.md`](architecture-review.md); for diagrams, see the simplified [`architecture-diagram-simple-notes.md`](architecture-diagram-simple-notes.md) and detailed [`architecture-diagram-notes.md`](architecture-diagram-notes.md) versions._
 
 ---
 
@@ -33,7 +33,7 @@ It ingests high-frequency telemetry from edge devices, stores it as time-series 
 4. **Gateway** consumes telemetry/status/alarm/report events and pushes per-tenant updates to browsers over SignalR.
 5. **Reporting** runs as an async NATS job: Gateway publishes `ReportRequested`; Reporting combines the tag-catalog profile, a TimescaleDB continuous-aggregate, and an alarm count, persists the report, and publishes `ReportCompleted`.
 
-See the [ingestion sequence](docs/architecture-diagram-by-Claude.md#3-telemetry-ingestion-anti-corruption-boundary--sequence) and [messaging topology](docs/architecture-diagram-by-Claude.md#2-messaging-topology-who-publishes--who-listens) diagrams.
+See the [ingestion sequence](architecture-diagram-notes.md#3-telemetry-ingestion-anti-corruption-boundary--sequence) and [messaging topology](architecture-diagram-notes.md#2-messaging-topology-who-publishes--who-listens) diagrams.
 
 ## Quickstart
 
@@ -48,7 +48,7 @@ docker compose up --build
 open http://localhost:8080        # Gateway API is also exposed at http://localhost:5202
 ```
 
-Demo credentials are in [`docs/dev-setup.md`](docs/dev-setup.md). Demo-user seeding is enabled for Compose only (`Seed__DemoUsers=true`); do **not** enable it in production-like runs.
+Demo credentials are in [`dev-setup.md`](dev-setup.md). Demo-user seeding is enabled for Compose only (`Seed__DemoData=true`); do **not** enable it in production-like runs.
 
 ### Build & test
 
@@ -98,14 +98,14 @@ All domain services listen on `8080` on the internal Docker network and are **no
 
 ## Documentation
 
-- **Architecture (deep, by Claude):** [`docs/ARCHITECTURE-by-Claude.md`](docs/ARCHITECTURE-by-Claude.md)
-- **Simplified diagram (by Claude):** [`docs/architecture-diagram-by-Claude-simple.md`](docs/architecture-diagram-by-Claude-simple.md)
-- **Detailed diagrams (by Claude):** [`docs/architecture-diagram-by-Claude.md`](docs/architecture-diagram-by-Claude.md)
-- Canonical system overview: [`docs/system-overview.md`](docs/system-overview.md)
-- Messaging ADR: [`docs/architecture-decisions/002-messaging.md`](docs/architecture-decisions/002-messaging.md)
-- Messaging runbook: [`docs/messaging-runbook.md`](docs/messaging-runbook.md)
-- Developer setup: [`docs/dev-setup.md`](docs/dev-setup.md)
-- Sparkplug B integration task: [`docs/tasks/sparkplug-b-integration.md`](docs/tasks/sparkplug-b-integration.md)
+- Architecture review: [`architecture-review.md`](architecture-review.md)
+- Simplified diagram notes: [`architecture-diagram-simple-notes.md`](architecture-diagram-simple-notes.md)
+- Detailed diagram notes: [`architecture-diagram-notes.md`](architecture-diagram-notes.md)
+- Canonical system overview: [`system-overview.md`](system-overview.md)
+- Messaging ADR: [`architecture-decisions/002-messaging.md`](architecture-decisions/002-messaging.md)
+- Messaging runbook: [`messaging-runbook.md`](messaging-runbook.md)
+- Developer setup: [`dev-setup.md`](dev-setup.md)
+- Sparkplug B integration task: [`tasks/sparkplug-b-integration.md`](tasks/sparkplug-b-integration.md)
 
 ## Design highlights
 
@@ -116,7 +116,7 @@ All domain services listen on `8080` on the internal Docker network and are **no
 
 ## Current limitations (read before relying on it)
 
-This is an actively evolving codebase. Known gaps (full list and fixes in [`docs/ARCHITECTURE-by-Claude.md` §12](docs/ARCHITECTURE-by-Claude.md#12-known-limitations-risks--roadmap)):
+This snapshot records the limitations that existed on 2026-06-05. See [`architecture-review.md` §12](architecture-review.md#12-known-limitations-risks--roadmap) for the full historical list:
 
 - **Dead-letter durability** — the ingestion DLQ subject (`alpha._dlq.*`) is not backed by a JetStream stream, so dead-lettered payloads are not retained.
 - **Service-to-service auth** — internal resolve/aggregate endpoints are unauthenticated (network-trust only); `report-aggregate` is not tenant-scoped. Intended to be hardened per client.
@@ -126,4 +126,4 @@ This is an actively evolving codebase. Known gaps (full list and fixes in [`docs
 
 ## Notes on this file
 
-This README and its sibling architecture/diagram files were generated by Claude as an independent, detailed review artifact. They reflect the repository state at commit `fc21040` (2026-06-05) and intentionally include an honest "current limitations" section. Treat the canonical `README.md` as the project's primary entry point; use these as the deeper, reviewer's-eye companion.
+This file and its sibling architecture/diagram notes reflect repository commit `fc21040` (2026-06-05). Treat the canonical [`README.md`](../README.md) as the current project entry point and use these files as historical review context.

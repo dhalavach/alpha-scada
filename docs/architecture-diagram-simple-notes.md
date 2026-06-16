@@ -1,6 +1,6 @@
-# Alpha SCADA — Simplified Architecture Diagram (by Claude)
+# Alpha SCADA Simplified Architecture Diagram Notes
 
-> Companion to [`ARCHITECTURE-by-Claude.md`](ARCHITECTURE-by-Claude.md) and the detailed Claude diagram set in [`architecture-diagram-by-Claude.md`](architecture-diagram-by-Claude.md).
+> Companion to [`architecture-review.md`](architecture-review.md) and the detailed diagram set in [`architecture-diagram-notes.md`](architecture-diagram-notes.md).
 > This version keeps only the major runtime responsibilities and is intended for stakeholder review.
 
 ```mermaid

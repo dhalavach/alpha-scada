@@ -1,8 +1,8 @@
-# Alpha SCADA — Architecture Diagrams (by Claude)
+# Alpha SCADA Architecture Diagram Notes
 
-> _Authored by Claude (Opus 4.8) on 2026-06-05 (codebase @ `fc21040`)._
-> _Companion to [`ARCHITECTURE-by-Claude.md`](ARCHITECTURE-by-Claude.md). GitHub renders the Mermaid blocks below._
-> _For a first-pass stakeholder view, use [`architecture-diagram-by-Claude-simple.md`](architecture-diagram-by-Claude-simple.md)._
+> _Review snapshot created on 2026-06-05 from repository commit `fc21040`._
+> _Companion to [`architecture-review.md`](architecture-review.md). GitHub renders the Mermaid blocks below._
+> _For a first-pass stakeholder view, use [`architecture-diagram-simple-notes.md`](architecture-diagram-simple-notes.md)._
 
 ---
 

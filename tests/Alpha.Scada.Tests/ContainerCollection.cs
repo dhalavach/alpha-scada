@@ -59,10 +59,7 @@ public sealed class PostgresContainerFixture : IAsyncLifetime
         var sanitizedPrefix = Sanitize(prefix);
         var suffix = Guid.NewGuid().ToString("N")[..8];
         var databaseName = $"{sanitizedPrefix[..Math.Min(sanitizedPrefix.Length, 39)]}_{suffix}";
-        await using var connection = new NpgsqlConnection(AdminConnectionString);
-        await connection.OpenAsync();
-        await using var command = new NpgsqlCommand($"""create database "{databaseName}" """, connection);
-        await command.ExecuteNonQueryAsync();
+        await CreateDatabaseWithRetryAsync(databaseName);
 
         var builder = new NpgsqlConnectionStringBuilder(AdminConnectionString)
         {
@@ -70,6 +67,35 @@ public sealed class PostgresContainerFixture : IAsyncLifetime
         };
         return builder.ConnectionString;
     }
+
+    private async Task CreateDatabaseWithRetryAsync(string databaseName)
+    {
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(30);
+        while (true)
+        {
+            try
+            {
+                await using var connection = new NpgsqlConnection(AdminConnectionString);
+                await connection.OpenAsync();
+                await using var command = new NpgsqlCommand($"""create database "{databaseName}" """, connection);
+                await command.ExecuteNonQueryAsync();
+                return;
+            }
+            catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.DuplicateDatabase)
+            {
+                return;
+            }
+            catch (Exception ex) when (IsStartupRace(ex) && DateTimeOffset.UtcNow < deadline)
+            {
+                await Task.Delay(250);
+            }
+        }
+    }
+
+    private static bool IsStartupRace(Exception exception) =>
+        exception is PostgresException { SqlState: PostgresErrorCodes.CannotConnectNow }
+        || exception is TimeoutException
+        || exception is NpgsqlException { InnerException: TimeoutException };
 
     private string AdminConnectionString
     {

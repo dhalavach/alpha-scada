@@ -56,3 +56,14 @@ docker compose exec postgres psql -U alpha -d alpha_identity -c "CREATE DATABASE
 Alternatively recreate the stack with `docker compose down -v` and `docker compose up --build`. Any stale Gateway Wolverine rows left in `alpha_reporting` are harmless after the split.
 
 Existing development volumes may retain the retired `edge_devices` table. It is harmless; remove it with `drop table if exists edge_devices` in `alpha_edge`, or recreate the development volume.
+
+Before upgrading an existing Identity database, check for email addresses that differ only by casing:
+
+```sql
+select lower(email) as normalized_email, array_agg(email order by email)
+from users
+group by lower(email)
+having count(*) > 1;
+```
+
+Resolve any rows returned by that query before startup applies the case-insensitive unique index. Identity retains audit events for 180 days by default; override `Audit:RetentionDays` with a positive day count when a deployment requires a different retention period.

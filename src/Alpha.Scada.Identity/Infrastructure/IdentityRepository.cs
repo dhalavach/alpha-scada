@@ -6,6 +6,8 @@ namespace Alpha.Scada.Identity.Infrastructure;
 
 public sealed class IdentityRepository(NpgsqlDataSource dataSource)
 {
+    private const int MaximumAuditMessageLength = 500;
+
     public async Task<UserAccount?> GetByEmailAsync(string email, CancellationToken cancellationToken)
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
@@ -76,6 +78,9 @@ public sealed class IdentityRepository(NpgsqlDataSource dataSource)
 
     public async Task WriteAuditAsync(Guid? tenantId, Guid? userId, string eventType, string message, CancellationToken cancellationToken)
     {
+        var boundedMessage = message.Length <= MaximumAuditMessageLength
+            ? message
+            : message[..MaximumAuditMessageLength];
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var command = new NpgsqlCommand("""
             insert into audit_events (id, tenant_id, user_id, event_type, message, created_at_utc)
@@ -84,8 +89,21 @@ public sealed class IdentityRepository(NpgsqlDataSource dataSource)
         command.Parameters.AddWithValue("tenant_id", (object?)tenantId ?? DBNull.Value);
         command.Parameters.AddWithValue("user_id", (object?)userId ?? DBNull.Value);
         command.Parameters.AddWithValue("event_type", eventType);
-        command.Parameters.AddWithValue("message", message);
+        command.Parameters.AddWithValue("message", boundedMessage);
         await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    public async Task<int> DeleteAuditEventsOlderThanAsync(int retentionDays, CancellationToken cancellationToken)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(retentionDays);
+
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("""
+            delete from audit_events
+            where created_at_utc < now() - make_interval(days => @retention_days)
+            """, connection);
+        command.Parameters.AddWithValue("retention_days", retentionDays);
+        return await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     public static UserDto ToDto(UserAccount user) => new(user.Id, user.TenantId, user.Email, user.DisplayName, user.Role);

@@ -18,6 +18,26 @@ public sealed class IdentityMigrator(
             alter table users
                 add column if not exists failed_login_count int not null default 0,
                 add column if not exists locked_until_utc timestamptz;
+            """),
+        new("003_identity_data_hygiene", """
+            do $$
+            begin
+                if exists (
+                    select 1
+                    from users
+                    group by lower(email)
+                    having count(*) > 1
+                ) then
+                    raise exception 'Cannot enforce case-insensitive user email uniqueness: duplicate email addresses exist.';
+                end if;
+            end
+            $$;
+
+            create unique index if not exists ux_users_email_lower
+                on users (lower(email));
+
+            create index if not exists ix_audit_created
+                on audit_events (created_at_utc);
             """)
     ];
 
@@ -35,7 +55,7 @@ public sealed class IdentityMigrator(
             await using var seed = new NpgsqlCommand("""
                 insert into users (id, tenant_id, email, display_name, password_hash, role)
                 values (@id, @tenant_id, @email, @display_name, @password_hash, @role)
-                on conflict (email) do nothing
+                on conflict do nothing
                 """, connection);
             seed.Parameters.AddWithValue("id", user.Id);
             seed.Parameters.AddWithValue("tenant_id", user.TenantId);
@@ -66,7 +86,7 @@ public sealed class IdentityMigrator(
         await using var seed = new NpgsqlCommand("""
             insert into users (id, tenant_id, email, display_name, password_hash, role)
             values (gen_random_uuid(), @tenant_id, @email, @display_name, @password_hash, @role)
-            on conflict (email) do nothing
+            on conflict do nothing
             """, connection);
         seed.Parameters.AddWithValue("tenant_id", tenantId);
         seed.Parameters.AddWithValue("email", email);
